@@ -129,13 +129,35 @@ async def entrypoint(ctx: JobContext):
         movie_tools.get_movie_extras,
     ]
 
-    # Initialize Grok (xAI) LLM
-    grok_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
-    llm = openai.LLM.with_x_ai(
-        api_key=grok_key,
-        model="grok-2-latest",
-        temperature=0.7,
-    )
+    # Flexible LLM provider resolution (Groq, OpenAI, or Grok/xAI)
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    grok_key = os.environ.get("GROK_API_KEY", "").strip() or os.environ.get("XAI_API_KEY", "").strip()
+
+    if groq_key and not groq_key.startswith("your_"):
+        logger.info("Configuring Groq LLM (llama-3.3-70b-versatile)")
+        llm = openai.LLM(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=groq_key,
+            model="llama-3.3-70b-versatile",
+            temperature=0.7,
+        )
+    elif openai_key and not openai_key.startswith("your_"):
+        logger.info("Configuring OpenAI LLM (gpt-4o-mini)")
+        llm = openai.LLM(
+            api_key=openai_key,
+            model="gpt-4o-mini",
+            temperature=0.7,
+        )
+    elif grok_key and not grok_key.startswith("your_"):
+        logger.info("Configuring Grok (xAI) LLM (grok-2-latest)")
+        llm = openai.LLM.with_x_ai(
+            api_key=grok_key,
+            model="grok-2-latest",
+            temperature=0.7,
+        )
+    else:
+        raise ValueError("No valid LLM key found. Please set GROQ_API_KEY, OPENAI_API_KEY, or GROK_API_KEY in agent/.env")
 
     # Initialize Deepgram STT and TTS
     deepgram_key = os.environ.get("DEEPGRAM_API_KEY")

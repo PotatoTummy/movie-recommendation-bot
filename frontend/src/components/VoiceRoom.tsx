@@ -10,11 +10,18 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, RoomEvent } from "livekit-client";
-import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Film } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Film, MessageSquare, User } from "lucide-react";
 import { MovieItem, MovieDetails, MovieDataEvent } from "@/types/movie";
 import { MovieGrid } from "./MovieGrid";
 import { TrailerModal } from "./TrailerModal";
 import { StreamingModal } from "./StreamingModal";
+
+interface TranscriptItem {
+  id: string;
+  sender: "user" | "agent";
+  text: string;
+  isFinal: boolean;
+}
 
 interface VoiceRoomProps {
   token: string;
@@ -48,13 +55,14 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
 
   const [movies, setMovies] = useState<MovieItem[]>([]);
   const [gridTitle, setGridTitle] = useState<string>("Live Recommendations");
+  const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
 
   // Modals state
   const [activeTrailer, setActiveTrailer] = useState<{ key: string; title: string } | null>(null);
   const [activeDetails, setActiveDetails] = useState<MovieDetails | null>(null);
   const [isLoadingTrailer, setIsLoadingTrailer] = useState<boolean>(false);
 
-  // Listen to WebRTC Data Channel for real-time JSON events from Python agent
+  // Listen to WebRTC Data Channel & Live Transcriptions
   useEffect(() => {
     if (!room) return;
 
@@ -89,9 +97,34 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
       }
     };
 
+    const handleTranscription = (segments: any[], participant?: any) => {
+      const isAgent = participant?.isAgent || participant?.identity?.toLowerCase().includes("agent") || false;
+      setTranscripts((prev) => {
+        const updated = [...prev];
+        for (const seg of segments) {
+          if (!seg.text || !seg.text.trim()) continue;
+          const idx = updated.findIndex((t) => t.id === seg.id);
+          const item: TranscriptItem = {
+            id: seg.id || `${Date.now()}-${Math.random()}`,
+            sender: isAgent ? "agent" : "user",
+            text: seg.text,
+            isFinal: !!seg.final,
+          };
+          if (idx >= 0) {
+            updated[idx] = item;
+          } else {
+            updated.push(item);
+          }
+        }
+        return updated.slice(-8); // Keep last 8 lines
+      });
+    };
+
     room.on(RoomEvent.DataReceived, handleDataReceived);
+    room.on(RoomEvent.TranscriptionReceived, handleTranscription);
     return () => {
       room.off(RoomEvent.DataReceived, handleDataReceived);
+      room.off(RoomEvent.TranscriptionReceived, handleTranscription);
     };
   }, [room]);
 
@@ -244,6 +277,45 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             </button>
           </div>
         </div>
+
+        {/* Live Subtitles & Conversation Stream */}
+        {transcripts.length > 0 && (
+          <div className="mt-6 border-t border-cine-border/60 pt-4">
+            <div className="flex items-center gap-2 mb-3 text-xs font-semibold text-gray-400">
+              <MessageSquare className="h-3.5 w-3.5 text-cine-cyan" />
+              <span>Live Conversation Transcript</span>
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
+              {transcripts.map((t) => (
+                <div
+                  key={t.id}
+                  className={`flex items-start gap-2.5 text-xs animate-fade-in ${
+                    t.sender === "user" ? "text-gray-200" : "text-rose-200"
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold shrink-0 ${
+                      t.sender === "user"
+                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                        : "bg-red-500/20 text-red-400 border border-red-500/30"
+                    }`}
+                  >
+                    {t.sender === "user" ? "You" : "AI"}
+                  </span>
+                  <p className="leading-relaxed py-0.5">
+                    <span className="font-semibold text-gray-400 mr-1.5">
+                      {t.sender === "user" ? "You:" : "CineBot:"}
+                    </span>
+                    {t.text}
+                    {!t.isFinal && (
+                      <span className="inline-block w-1.5 h-1.5 ml-1 rounded-full bg-red-400 animate-ping" />
+                    )}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Quick Voice Hints */}
         <div className="mt-6 border-t border-cine-border/60 pt-4 flex flex-wrap items-center gap-2 text-xs text-gray-400">
