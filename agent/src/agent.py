@@ -159,7 +159,7 @@ async def entrypoint(ctx: JobContext):
     )
 
     # Start the voice session inside the room
-    session.start(agent, room=ctx.room)
+    await session.start(agent, room=ctx.room)
 
     # Give friendly spoken welcome to kick off conversation
     session.say(WELCOME_MESSAGE, allow_interruptions=True)
@@ -171,3 +171,4 @@ if __name__ == "__main__":
             entrypoint_fnc=entrypoint,
         )
     )
+
