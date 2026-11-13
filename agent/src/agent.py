@@ -1,0 +1,173 @@
+"""
+LiveKit Voice AI Movie Recommendation Agent (CineBot)
+Powered by:
+- LiveKit Agents v1.8
+- LLM: Grok (xAI) grok-2-latest
+- STT: Deepgram Nova-2
+- TTS: Deepgram Aura
+- VAD: Silero VAD
+- Real-time WebRTC Data Channel synchronizer for dynamic UI updates
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Optional
+
+from dotenv import load_dotenv
+
+# Ensure local package resolution
+sys.path.append(str(Path(__file__).resolve().parent))
+
+# Robustly load .env
+env_file = Path(__file__).resolve().parents[1] / ".env"
+if env_file.exists():
+    load_dotenv(dotenv_path=env_file)
+else:
+    load_dotenv()
+
+from livekit.agents import (
+    AutoSubscribe,
+    JobContext,
+    WorkerOptions,
+    cli,
+    function_tool,
+)
+from livekit.agents.voice import Agent, AgentSession
+from livekit.plugins import deepgram, openai, silero
+
+from prompts import AGENT_INSTRUCTIONS, WELCOME_MESSAGE
+from tools.tmdb import (
+    discover_movies,
+    get_movie_details_and_extras,
+    search_movies,
+)
+
+logger = logging.getLogger("cinebot-agent")
+
+
+class MovieTools:
+    """Tools available to the LLM for TMDB search and discovery."""
+
+    def __init__(self, room):
+        self.room = room
+
+    async def _broadcast(self, event_type: str, data: dict):
+        """Broadcast structured movie events over LiveKit data channel."""
+        if not self.room or not self.room.local_participant:
+            return
+        payload = json.dumps({
+            "type": event_type,
+            "timestamp": int(time.time() * 1000),
+            "data": data,
+        })
+        try:
+            await self.room.local_participant.publish_data(
+                payload.encode("utf-8"),
+                topic="movie_data",
+                reliable=True,
+            )
+            logger.info(f"Broadcasted '{event_type}' on topic 'movie_data'")
+        except Exception as e:
+            logger.error(f"Failed to broadcast data channel event: {e}")
+
+    @function_tool(
+        description="Search for movies by title or query string (e.g. 'Inception', 'The Dark Knight')."
+    )
+    async def search_movie(self, query: str, year: Optional[int] = None) -> str:
+        """Search movies in TMDB database."""
+        movies = await search_movies(query=query, year=year)
+        await self._broadcast("MOVIE_SEARCH_RESULTS", {"query": query, "movies": movies})
+        return json.dumps(movies)
+
+    @function_tool(
+        description="Discover movie recommendations by genre (e.g. 'sci-fi', 'thriller', 'horror', 'action', 'comedy', 'romance', 'drama'), release years, or minimum rating."
+    )
+    async def discover_movies_by_genre(
+        self,
+        genre: Optional[str] = None,
+        year_gte: Optional[int] = None,
+        year_lte: Optional[int] = None,
+        min_rating: float = 6.5,
+    ) -> str:
+        """Discover movies matching specific criteria."""
+        movies = await discover_movies(
+            genre=genre,
+            year_gte=year_gte,
+            year_lte=year_lte,
+            min_rating=min_rating,
+        )
+        await self._broadcast("MOVIE_RECOMMENDATIONS", {"genre": genre, "movies": movies})
+        return json.dumps(movies)
+
+    @function_tool(
+        description="Get movie details including YouTube trailer and streaming providers (Netflix, Prime, Disney+) using the TMDB movie ID."
+    )
+    async def get_movie_extras(self, movie_id: int) -> str:
+        """Fetch synopsis, trailers, and where to stream."""
+        details = await get_movie_details_and_extras(movie_id=movie_id)
+        await self._broadcast("MOVIE_DETAILS", details)
+        return json.dumps(details)
+
+
+async def entrypoint(ctx: JobContext):
+    logger.info(f"Connecting to room: {ctx.room.name}")
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+    # Wait for the user participant to join
+    participant = await ctx.wait_for_participant()
+    logger.info(f"Started CineBot session for participant: {participant.identity}")
+
+    # Initialize tools with room context for WebRTC data broadcasts
+    movie_tools = MovieTools(room=ctx.room)
+    tools = [
+        movie_tools.search_movie,
+        movie_tools.discover_movies_by_genre,
+        movie_tools.get_movie_extras,
+    ]
+
+    # Initialize Grok (xAI) LLM
+    grok_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
+    llm = openai.LLM.with_x_ai(
+        api_key=grok_key,
+        model="grok-2-latest",
+        temperature=0.7,
+    )
+
+    # Initialize Deepgram STT and TTS
+    deepgram_key = os.environ.get("DEEPGRAM_API_KEY")
+    stt = deepgram.STT(api_key=deepgram_key)
+    tts = deepgram.TTS(api_key=deepgram_key, model="aura-asteria-en")
+
+    # Initialize VAD
+    vad = silero.VAD.load()
+
+    # Create the agent session and agent instance
+    session = AgentSession(
+        stt=stt,
+        vad=vad,
+        llm=llm,
+        tts=tts,
+    )
+
+    agent = Agent(
+        instructions=AGENT_INSTRUCTIONS,
+        tools=tools,
+    )
+
+    # Start the voice session inside the room
+    session.start(agent, room=ctx.room)
+
+    # Give friendly spoken welcome to kick off conversation
+    session.say(WELCOME_MESSAGE, allow_interruptions=True)
+
+
+if __name__ == "__main__":
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+        )
+    )
