@@ -1,6 +1,8 @@
 # CineBot 🎬 — LiveKit Voice AI Movie Sommelier
 
-A real-time, voice-interactive AI movie assistant built with **LiveKit WebRTC**, **Grok (xAI)**, **Deepgram (STT & TTS)**, and the **TMDB (The Movie Database) API**.
+A real-time, voice-interactive AI movie assistant built with **LiveKit WebRTC**, **Groq (Llama / GPT-OSS)**, **Deepgram (STT & TTS)**, and the **TMDB (The Movie Database) API**.
+
+🌐 **Live Demo:** [**https://cinebot-livekit.vercel.app**](https://cinebot-livekit.vercel.app) (or [https://movie-recommendation-bot.vercel.app](https://movie-recommendation-bot.vercel.app))
 
 CineBot synchronizes sub-300ms spoken conversations with real-time UI updates: as the AI voice agent talks about a movie recommendation, the frontend instantly renders high-res movie posters, IMDb/TMDB ratings, trailers, and where to stream (Netflix, Prime Video, Apple TV, Disney+) over **WebRTC Data Channels**.
 
