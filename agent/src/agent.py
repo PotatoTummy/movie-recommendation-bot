@@ -135,11 +135,11 @@ async def entrypoint(ctx: JobContext):
     grok_key = os.environ.get("GROK_API_KEY", "").strip() or os.environ.get("XAI_API_KEY", "").strip()
 
     if groq_key and not groq_key.startswith("your_"):
-        logger.info("Configuring Groq LLM (llama-3.3-70b-versatile)")
+        logger.info("Configuring Groq LLM (openai/gpt-oss-120b)")
         llm = openai.LLM(
             base_url="https://api.groq.com/openai/v1",
             api_key=groq_key,
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.7,
         )
     elif openai_key and not openai_key.startswith("your_"):
@@ -173,6 +173,8 @@ async def entrypoint(ctx: JobContext):
         vad=vad,
         llm=llm,
         tts=tts,
+        min_endpointing_delay=0.4,
+        max_endpointing_delay=1.2,
     )
 
     agent = Agent(
