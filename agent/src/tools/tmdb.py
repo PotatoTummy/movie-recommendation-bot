@@ -52,6 +52,9 @@ GENRE_MAP: Dict[str, int] = {
     "science fiction": 878,
     "tv movie": 10770,
     "thriller": 53,
+    "neo noir": 53,
+    "neo-noir": 53,
+    "noir": 53,
     "war": 10752,
     "western": 37,
 }

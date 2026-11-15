@@ -77,18 +77,9 @@ class MovieTools:
             logger.error(f"Failed to broadcast data channel event: {e}")
 
     @function_tool(
-        description="Search for movies by title or query string (e.g. 'Inception', 'The Dark Knight')."
+        description="Discover movie recommendations by genre (e.g. 'sci-fi', 'thriller', 'neo-noir', 'horror', 'action', 'comedy', 'romance', 'drama'), release years, or minimum rating."
     )
-    async def search_movie(self, query: str, year: Optional[int] = None) -> str:
-        """Search movies in TMDB database."""
-        movies = await search_movies(query=query, year=year)
-        await self._broadcast("MOVIE_SEARCH_RESULTS", {"query": query, "movies": movies})
-        return json.dumps(movies)
-
-    @function_tool(
-        description="Discover movie recommendations by genre (e.g. 'sci-fi', 'thriller', 'horror', 'action', 'comedy', 'romance', 'drama'), release years, or minimum rating."
-    )
-    async def discover_movies_by_genre(
+    async def discover_movies(
         self,
         genre: Optional[str] = None,
         year_gte: Optional[int] = None,
@@ -96,19 +87,31 @@ class MovieTools:
         min_rating: float = 6.5,
     ) -> str:
         """Discover movies matching specific criteria."""
+        clean_genre = (genre or "").lower().strip()
+        if "noir" in clean_genre:
+            clean_genre = "neo noir"
         movies = await discover_movies(
-            genre=genre,
+            genre=clean_genre if clean_genre else genre,
             year_gte=year_gte,
             year_lte=year_lte,
             min_rating=min_rating,
         )
-        await self._broadcast("MOVIE_RECOMMENDATIONS", {"genre": genre, "movies": movies})
+        await self._broadcast("MOVIE_RECOMMENDATIONS", {"genre": genre or "curated", "movies": movies})
+        return json.dumps(movies)
+
+    @function_tool(
+        description="Search for movies by specific title, director, or query string (e.g. 'Inception', 'The Dark Knight', 'Blade Runner')."
+    )
+    async def search_movies(self, query: str, year: Optional[int] = None) -> str:
+        """Search movies in TMDB database."""
+        movies = await search_movies(query=query, year=year)
+        await self._broadcast("MOVIE_SEARCH_RESULTS", {"query": query, "movies": movies})
         return json.dumps(movies)
 
     @function_tool(
         description="Get movie details including YouTube trailer and streaming providers (Netflix, Prime, Disney+) using the TMDB movie ID."
     )
-    async def get_movie_extras(self, movie_id: int) -> str:
+    async def get_movie_details_and_extras(self, movie_id: int) -> str:
         """Fetch synopsis, trailers, and where to stream."""
         details = await get_movie_details_and_extras(movie_id=movie_id)
         await self._broadcast("MOVIE_DETAILS", details)
@@ -126,9 +129,9 @@ async def entrypoint(ctx: JobContext):
     # Initialize tools with room context for WebRTC data broadcasts
     movie_tools = MovieTools(room=ctx.room)
     tools = [
-        movie_tools.search_movie,
-        movie_tools.discover_movies_by_genre,
-        movie_tools.get_movie_extras,
+        movie_tools.discover_movies,
+        movie_tools.search_movies,
+        movie_tools.get_movie_details_and_extras,
     ]
 
     # Flexible LLM provider resolution (Groq, OpenAI, or Grok/xAI)

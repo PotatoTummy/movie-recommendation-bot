@@ -103,33 +103,34 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     if (!room) return;
 
     const handleDataReceived = (payload: Uint8Array, participant: any, kind: any, topic?: string) => {
-      if (topic === "movie_data") {
-        try {
-          const str = new TextDecoder().decode(payload);
-          const event: MovieDataEvent = JSON.parse(str);
+      try {
+        const str = new TextDecoder().decode(payload);
+        const event: MovieDataEvent = JSON.parse(str);
+        if (!event || !event.type) return;
 
-          if (event.type === "MOVIE_RECOMMENDATIONS") {
-            setMovies(event.data.movies || []);
-            setGridTitle(
-              event.data.genre
-                ? `Recommendations: ${event.data.genre.toUpperCase()}`
-                : "Curated Recommendations"
-            );
-          } else if (event.type === "MOVIE_SEARCH_RESULTS") {
-            setMovies(event.data.movies || []);
-            setGridTitle(`Search: "${event.data.query}"`);
-          } else if (event.type === "MOVIE_DETAILS") {
-            setActiveDetails(event.data);
-            if (event.data.trailer_youtube_key) {
-              setActiveTrailer({
-                key: event.data.trailer_youtube_key,
-                title: event.data.title,
-              });
-            }
+        console.log("🎬 CineBot Data Channel Event received:", event.type, event.data);
+
+        if (event.type === "MOVIE_RECOMMENDATIONS") {
+          setMovies(event.data.movies || []);
+          setGridTitle(
+            event.data.genre
+              ? `Recommendations: ${event.data.genre.toUpperCase()}`
+              : "Curated Recommendations"
+          );
+        } else if (event.type === "MOVIE_SEARCH_RESULTS") {
+          setMovies(event.data.movies || []);
+          setGridTitle(`Search: "${event.data.query}"`);
+        } else if (event.type === "MOVIE_DETAILS") {
+          setActiveDetails(event.data);
+          if (event.data.trailer_youtube_key) {
+            setActiveTrailer({
+              key: event.data.trailer_youtube_key,
+              title: event.data.title,
+            });
           }
-        } catch (err) {
-          console.error("Error decoding movie data channel event:", err);
         }
+      } catch (err) {
+        // Ignore non-json packets
       }
     };
 
