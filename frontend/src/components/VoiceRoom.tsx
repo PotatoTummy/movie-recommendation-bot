@@ -111,15 +111,19 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
         console.log("🎬 CineBot Data Channel Event received:", event.type, event.data);
 
         if (event.type === "MOVIE_RECOMMENDATIONS") {
-          setMovies(event.data.movies || []);
-          setGridTitle(
-            event.data.genre
-              ? `Recommendations: ${event.data.genre.toUpperCase()}`
-              : "Curated Recommendations"
-          );
+          if (event.data.movies && event.data.movies.length > 0) {
+            setMovies(event.data.movies);
+            setGridTitle(
+              event.data.genre
+                ? `Recommendations: ${event.data.genre.toUpperCase()}`
+                : "Curated Recommendations"
+            );
+          }
         } else if (event.type === "MOVIE_SEARCH_RESULTS") {
-          setMovies(event.data.movies || []);
-          setGridTitle(`Search: "${event.data.query}"`);
+          if (event.data.movies && event.data.movies.length > 0) {
+            setMovies(event.data.movies);
+            setGridTitle(`Search: "${event.data.query}"`);
+          }
         } else if (event.type === "MOVIE_DETAILS") {
           setActiveDetails(event.data);
           if (event.data.trailer_youtube_key) {

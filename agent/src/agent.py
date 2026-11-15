@@ -96,7 +96,8 @@ class MovieTools:
             year_lte=year_lte,
             min_rating=min_rating,
         )
-        await self._broadcast("MOVIE_RECOMMENDATIONS", {"genre": genre or "curated", "movies": movies})
+        if movies:
+            await self._broadcast("MOVIE_RECOMMENDATIONS", {"genre": genre or "curated", "movies": movies})
         return json.dumps(movies)
 
     @function_tool(
@@ -105,7 +106,8 @@ class MovieTools:
     async def search_movies(self, query: str, year: Optional[int] = None) -> str:
         """Search movies in TMDB database."""
         movies = await search_movies(query=query, year=year)
-        await self._broadcast("MOVIE_SEARCH_RESULTS", {"query": query, "movies": movies})
+        if movies:
+            await self._broadcast("MOVIE_SEARCH_RESULTS", {"query": query, "movies": movies})
         return json.dumps(movies)
 
     @function_tool(

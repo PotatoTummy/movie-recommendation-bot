@@ -128,6 +128,17 @@ async def search_movies(query: str, year: Optional[int] = None) -> List[Dict[str
         data = await _safe_get(url, params)
         results = data.get("results", [])
 
+        # If 0 results and multi-word query, try prominent keywords
+        if not results and len(query.split()) > 2:
+            cleaned_words = [
+                w for w in query.split()
+                if w.lower() not in {"movie", "movies", "film", "films", "the", "a", "an", "some", "good", "best", "top"}
+            ]
+            if cleaned_words:
+                short_query = " ".join(cleaned_words[:2])
+                fallback_data = await _safe_get(url, {"query": short_query, "include_adult": "false", "page": "1"})
+                results = fallback_data.get("results", [])
+
         movies = []
         for m in results[:5]:
             poster_path = m.get("poster_path")
@@ -174,6 +185,17 @@ async def discover_movies(
 
         data = await _safe_get(url, params)
         results = data.get("results", [])
+
+        # If 0 results and multi-word query, try prominent keywords
+        if not results and len(query.split()) > 2:
+            cleaned_words = [
+                w for w in query.split()
+                if w.lower() not in {"movie", "movies", "film", "films", "the", "a", "an", "some", "good", "best", "top"}
+            ]
+            if cleaned_words:
+                short_query = " ".join(cleaned_words[:2])
+                fallback_data = await _safe_get(url, {"query": short_query, "include_adult": "false", "page": "1"})
+                results = fallback_data.get("results", [])
 
         movies = []
         for m in results[:6]:
