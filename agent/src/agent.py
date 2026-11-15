@@ -77,6 +77,23 @@ class MovieTools:
             logger.error(f"Failed to broadcast data channel event: {e}")
 
     @function_tool(
+        description="Recommend a specific curated list of movies by title (e.g. titles=['Chennai Express', 'Happy New Year', 'Baadshah'] or titles=['Se7en', 'Zodiac', 'Fight Club']). Use this when recommending movies based on a specific actor, director, theme, or concept so exact matching posters display on screen."
+    )
+    async def recommend_movies_by_titles(self, titles: list[str]) -> str:
+        """Fetch and display movie cards for specific titles chosen by the sommelier."""
+        curated_movies = []
+        for title in titles[:6]:
+            results = await search_movies(query=title.strip())
+            if results:
+                curated_movies.append(results[0])
+        if curated_movies:
+            await self._broadcast("MOVIE_RECOMMENDATIONS", {
+                "genre": "Curated Selection",
+                "movies": curated_movies,
+            })
+        return json.dumps(curated_movies)
+
+    @function_tool(
         description="Discover movie recommendations by genre (e.g. 'sci-fi', 'thriller', 'neo-noir', 'horror', 'action', 'comedy', 'romance', 'drama'), release years, or minimum rating."
     )
     async def discover_movies(
@@ -131,6 +148,7 @@ async def entrypoint(ctx: JobContext):
     # Initialize tools with room context for WebRTC data broadcasts
     movie_tools = MovieTools(room=ctx.room)
     tools = [
+        movie_tools.recommend_movies_by_titles,
         movie_tools.discover_movies,
         movie_tools.search_movies,
         movie_tools.get_movie_details_and_extras,
@@ -211,6 +229,9 @@ async def entrypoint(ctx: JobContext):
                     if text:
                         logger.info(f"Received text prompt from user: {text}")
                         session.generate_reply(user_input=text)
+                elif msg.get("type") == "INTERRUPT_SPEECH":
+                    logger.info("Received interrupt/skip signal from user")
+                    session.interrupt(force=True)
             except Exception as e:
                 logger.error(f"Error handling user text message: {e}")
 

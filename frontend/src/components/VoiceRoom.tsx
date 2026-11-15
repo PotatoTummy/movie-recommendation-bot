@@ -10,7 +10,7 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, RoomEvent } from "livekit-client";
-import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Film, MessageSquare, User, Send } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Film, MessageSquare, User, Send, FastForward } from "lucide-react";
 import { MovieItem, MovieDetails, MovieDataEvent } from "@/types/movie";
 import { MovieGrid } from "./MovieGrid";
 import { TrailerModal } from "./TrailerModal";
@@ -27,6 +27,25 @@ interface VoiceRoomProps {
   token: string;
   serverUrl: string;
   onDisconnect: () => void;
+}
+
+function FormattedTranscript({ text }: { text: string }) {
+  // Parse markdown bold **text** cleanly into strong elements
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <strong key={i} className="font-bold text-white bg-white/5 px-1 py-0.5 rounded">
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
 }
 
 export function VoiceRoom({ token, serverUrl, onDisconnect }: VoiceRoomProps) {
@@ -249,8 +268,28 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     }
   }, []);
 
+  // Skip / interrupt the bot's current speech (like a game cutscene skip)
+  const handleSkipSpeech = useCallback(async () => {
+    if (!room) return;
+    try {
+      const payload = JSON.stringify({
+        type: "INTERRUPT_SPEECH",
+        timestamp: Date.now(),
+      });
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(payload),
+        { reliable: true, topic: "movie_data" }
+      );
+    } catch (e) {
+      console.error("Failed to send interrupt speech command:", e);
+    }
+  }, [room]);
+
   // Format status badge
   const getAgentStatusBadge = () => {
+    if (!isMicEnabled) {
+      return { text: "Mic Muted • Type your request below", color: "bg-amber-400", ping: false };
+    }
     switch (agentState) {
       case "listening":
         return { text: "Listening to you...", color: "bg-emerald-500", ping: true };
@@ -318,8 +357,19 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             </div>
           </div>
 
-          {/* Call Controls: Mic Mute & Disconnect */}
+          {/* Call Controls: Skip Speech, Mic Mute & Disconnect */}
           <div className="flex items-center gap-3">
+            {agentState === "speaking" && (
+              <button
+                onClick={handleSkipSpeech}
+                className="flex h-12 items-center gap-1.5 rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 text-xs font-bold text-amber-300 hover:bg-amber-500/25 active:scale-95 transition-all shadow-lg shadow-amber-500/10 animate-pulse"
+                title="Skip bot's speech like a game cutscene"
+              >
+                <FastForward className="h-4 w-4 fill-amber-300" />
+                <span className="font-bold">Skip</span>
+              </button>
+            )}
+
             <button
               {...micButtonProps}
               className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200 ${
@@ -370,7 +420,7 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
                     <span className="font-semibold text-gray-400 mr-1.5">
                       {t.sender === "user" ? "You:" : "CineBot:"}
                     </span>
-                    {t.text}
+                    <FormattedTranscript text={t.text} />
                     {!t.isFinal && (
                       <span className="inline-block w-1.5 h-1.5 ml-1 rounded-full bg-red-400 animate-ping" />
                     )}
