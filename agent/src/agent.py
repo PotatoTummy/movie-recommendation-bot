@@ -9,6 +9,7 @@ Powered by:
 - Real-time WebRTC Data Channel synchronizer for dynamic UI updates
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -35,6 +36,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
     function_tool,
+    room_io,
 )
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import deepgram, openai, silero
@@ -182,8 +184,72 @@ async def entrypoint(ctx: JobContext):
         tools=tools,
     )
 
-    # Start the voice session inside the room
-    await session.start(agent, room=ctx.room)
+    # Start the voice session inside the room with transcription and text enabled
+    await session.start(
+        agent,
+        room=ctx.room,
+        room_output_options=room_io.RoomOutputOptions(
+            transcription_enabled=True,
+            sync_transcription=True,
+        ),
+        room_input_options=room_io.RoomInputOptions(
+            text_enabled=True,
+        ),
+    )
+
+    async def broadcast_transcript(sender: str, text: str, is_final: bool):
+        """Broadcast live transcript updates over the data channel."""
+        if not ctx.room or not ctx.room.local_participant or not text.strip():
+            return
+        payload = json.dumps({
+            "type": "TRANSCRIPT_UPDATE",
+            "timestamp": int(time.time() * 1000),
+            "data": {
+                "id": str(int(time.time() * 1000)),
+                "sender": sender,
+                "text": text,
+                "is_final": is_final,
+            },
+        })
+        try:
+            await ctx.room.local_participant.publish_data(
+                payload.encode("utf-8"),
+                topic="movie_data",
+                reliable=True,
+            )
+        except Exception as e:
+            logger.error(f"Error broadcasting transcript: {e}")
+
+    @session.on("user_input_transcribed")
+    def on_user_transcript(ev):
+        if getattr(ev, "transcript", None):
+            asyncio.create_task(broadcast_transcript("user", ev.transcript, ev.is_final))
+
+    @session.on("conversation_item_added")
+    def on_conversation_item(ev):
+        if hasattr(ev, "item") and ev.item.role == "assistant":
+            content = ""
+            if isinstance(ev.item.content, str):
+                content = ev.item.content
+            elif isinstance(ev.item.content, list):
+                content = " ".join([str(c) for c in ev.item.content])
+            if content:
+                asyncio.create_task(broadcast_transcript("agent", content, True))
+
+    # Handle typed text input from frontend text box
+    @ctx.room.on("data_received")
+    def on_data_received(data_packet):
+        if data_packet.topic == "movie_data":
+            try:
+                msg = json.loads(data_packet.data.decode("utf-8"))
+                if msg.get("type") == "USER_TEXT_MESSAGE":
+                    text = msg.get("text", "").strip()
+                    if text:
+                        logger.info(f"Received text prompt from user: {text}")
+                        asyncio.create_task(broadcast_transcript("user", text, True))
+                        session.generate_reply(user_input=text)
+            except Exception as e:
+                logger.error(f"Error handling user text message: {e}")
 
     # Give friendly spoken welcome to kick off conversation
     session.say(WELCOME_MESSAGE, allow_interruptions=True)

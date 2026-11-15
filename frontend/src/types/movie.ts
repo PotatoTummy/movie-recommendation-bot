@@ -46,4 +46,14 @@ export type MovieDataEvent =
       type: "MOVIE_DETAILS";
       timestamp: number;
       data: MovieDetails;
+    }
+  | {
+      type: "TRANSCRIPT_UPDATE";
+      timestamp: number;
+      data: {
+        id: string;
+        sender: "user" | "agent";
+        text: string;
+        is_final: boolean;
+      };
     };

@@ -10,7 +10,7 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, RoomEvent } from "livekit-client";
-import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Film, MessageSquare, User } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Film, MessageSquare, User, Send } from "lucide-react";
 import { MovieItem, MovieDetails, MovieDataEvent } from "@/types/movie";
 import { MovieGrid } from "./MovieGrid";
 import { TrailerModal } from "./TrailerModal";
@@ -56,11 +56,42 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
   const [movies, setMovies] = useState<MovieItem[]>([]);
   const [gridTitle, setGridTitle] = useState<string>("Live Recommendations");
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
+  const [typedMessage, setTypedMessage] = useState<string>("");
 
   // Modals state
   const [activeTrailer, setActiveTrailer] = useState<{ key: string; title: string } | null>(null);
   const [activeDetails, setActiveDetails] = useState<MovieDetails | null>(null);
   const [isLoadingTrailer, setIsLoadingTrailer] = useState<boolean>(false);
+
+  // Send typed text message to agent via data channel
+  const handleSendTextMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const text = typedMessage.trim();
+    if (!text || !room) return;
+
+    // Instantly append to local transcript UI
+    const tempId = `user-text-${Date.now()}`;
+    setTranscripts((prev) => [
+      ...prev,
+      { id: tempId, sender: "user", text, isFinal: true },
+    ]);
+    setTypedMessage("");
+
+    // Publish to Python agent over data channel
+    const payload = JSON.stringify({
+      type: "USER_TEXT_MESSAGE",
+      text,
+      timestamp: Date.now(),
+    });
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(payload),
+        { reliable: true, topic: "movie_data" }
+      );
+    } catch (err) {
+      console.error("Failed to publish text message to agent:", err);
+    }
+  };
 
   // Listen to WebRTC Data Channel & Live Transcriptions
   useEffect(() => {
@@ -90,6 +121,23 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
                 title: event.data.title,
               });
             }
+          } else if (event.type === "TRANSCRIPT_UPDATE") {
+            setTranscripts((prev) => {
+              const updated = [...prev];
+              const idx = updated.findIndex((t) => t.id === event.data.id);
+              const item: TranscriptItem = {
+                id: event.data.id,
+                sender: event.data.sender,
+                text: event.data.text,
+                isFinal: event.data.is_final,
+              };
+              if (idx >= 0) {
+                updated[idx] = item;
+              } else {
+                updated.push(item);
+              }
+              return updated.slice(-10);
+            });
           }
         } catch (err) {
           console.error("Error decoding movie data channel event:", err);
@@ -316,6 +364,27 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             </div>
           </div>
         )}
+
+        {/* Text Input Box for non-voice / typing users */}
+        <form onSubmit={handleSendTextMessage} className="mt-6 border-t border-cine-border/60 pt-4 flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={typedMessage}
+              onChange={(e) => setTypedMessage(e.target.value)}
+              placeholder="Prefer typing? Type your request here (e.g. 'Recommend 90s action thrillers' or 'Show trailer for Inception')..."
+              className="w-full rounded-xl border border-cine-border bg-[#080b11]/80 px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!typedMessage.trim()}
+            className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-40 transition"
+          >
+            <Send className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Send</span>
+          </button>
+        </form>
 
         {/* Quick Voice Hints */}
         <div className="mt-6 border-t border-cine-border/60 pt-4 flex flex-wrap items-center gap-2 text-xs text-gray-400">
