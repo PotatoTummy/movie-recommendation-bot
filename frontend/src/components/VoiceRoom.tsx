@@ -69,12 +69,17 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     const text = typedMessage.trim();
     if (!text || !room) return;
 
-    // Instantly append to local transcript UI
-    const tempId = `user-text-${Date.now()}`;
-    setTranscripts((prev) => [
-      ...prev,
-      { id: tempId, sender: "user", text, isFinal: true },
-    ]);
+    // Instantly append to local transcript UI (deduplicated)
+    setTranscripts((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.sender === "user" && last.text.toLowerCase() === text.toLowerCase()) {
+        return prev;
+      }
+      return [
+        ...prev,
+        { id: `user-text-${Date.now()}`, sender: "user" as const, text, isFinal: true },
+      ].slice(-8);
+    });
     setTypedMessage("");
 
     // Publish to Python agent over data channel
@@ -121,23 +126,6 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
                 title: event.data.title,
               });
             }
-          } else if (event.type === "TRANSCRIPT_UPDATE") {
-            setTranscripts((prev) => {
-              const updated = [...prev];
-              const idx = updated.findIndex((t) => t.id === event.data.id);
-              const item: TranscriptItem = {
-                id: event.data.id,
-                sender: event.data.sender,
-                text: event.data.text,
-                isFinal: event.data.is_final,
-              };
-              if (idx >= 0) {
-                updated[idx] = item;
-              } else {
-                updated.push(item);
-              }
-              return updated.slice(-10);
-            });
           }
         } catch (err) {
           console.error("Error decoding movie data channel event:", err);
@@ -147,22 +135,45 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
 
     const handleTranscription = (segments: any[], participant?: any) => {
       const isAgent = participant?.isAgent || participant?.identity?.toLowerCase().includes("agent") || false;
+      const targetSender: "agent" | "user" = isAgent ? "agent" : "user";
+
       setTranscripts((prev) => {
         const updated = [...prev];
         for (const seg of segments) {
           if (!seg.text || !seg.text.trim()) continue;
+          const cleanText = seg.text.trim();
+
+          // 1. Match by segment ID if updating in-progress transcript
           const idx = updated.findIndex((t) => t.id === seg.id);
-          const item: TranscriptItem = {
-            id: seg.id || `${Date.now()}-${Math.random()}`,
-            sender: isAgent ? "agent" : "user",
-            text: seg.text,
-            isFinal: !!seg.final,
-          };
           if (idx >= 0) {
-            updated[idx] = item;
-          } else {
-            updated.push(item);
+            updated[idx] = {
+              ...updated[idx],
+              text: cleanText,
+              isFinal: !!seg.final,
+            };
+            continue;
           }
+
+          // 2. Prevent duplicate entries from same sender with identical text
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].sender === targetSender) {
+            if (!updated[lastIdx].isFinal || updated[lastIdx].text.toLowerCase() === cleanText.toLowerCase()) {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                text: cleanText,
+                isFinal: !!seg.final,
+              };
+              continue;
+            }
+          }
+
+          // 3. Append new segment
+          updated.push({
+            id: seg.id || `seg-${Date.now()}`,
+            sender: targetSender,
+            text: cleanText,
+            isFinal: !!seg.final,
+          });
         }
         return updated.slice(-8); // Keep last 8 lines
       });

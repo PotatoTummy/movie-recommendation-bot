@@ -1,12 +1,18 @@
 """
-TMDB (The Movie Database) API Client & Tools (Async via aiohttp)
+TMDB (The Movie Database) API Client & Tools (Async via aiohttp with bulletproof urllib fallback)
 Provides movie search, genre-based discovery, trailer fetching, and streaming provider lookups.
 """
 
-import os
+import asyncio
+import json
 import logging
-from typing import Optional, Dict, Any, List
+import os
+import ssl
+import urllib.parse
+import urllib.request
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import aiohttp
 from dotenv import load_dotenv
 
@@ -21,6 +27,11 @@ logger = logging.getLogger("tmdb-client")
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500"
+
+BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 GENRE_MAP: Dict[str, int] = {
     "action": 28,
@@ -50,7 +61,7 @@ def _get_headers() -> Dict[str, str]:
     """Retrieve auth headers using Read Access Token (v4) or API Key fallback."""
     token = os.environ.get("TMDB_READ_ACCESS_TOKEN", "").strip()
     headers = {
-        "User-Agent": "MovieBot/1.0",
+        "User-Agent": BROWSER_UA,
         "Accept": "application/json",
     }
     if token and not token.startswith("your_"):
@@ -67,22 +78,52 @@ def _get_params(extra_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
     return params
 
 
+def _sync_fetch(url: str, params: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+    """Synchronous urllib fetcher used as bulletproof fallback if aiohttp SSL drops."""
+    try:
+        query_str = urllib.parse.urlencode(params)
+        full_url = f"{url}?{query_str}" if query_str else url
+        req = urllib.request.Request(full_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=8) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception as e:
+        logger.error(f"urllib fallback error for {url}: {e}")
+        return {}
+
+
+async def _safe_get(url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Fetch JSON from TMDB with aiohttp, falling back to urllib on connection reset or SSL error."""
+    headers = _get_headers()
+    all_params = _get_params(params)
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+    try:
+        async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
+            async with session.get(url, params=all_params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                text = await resp.text()
+                logger.warning(f"TMDB request returned status {resp.status}: {text[:100]}")
+    except Exception as aio_err:
+        logger.warning(f"aiohttp request failed ({aio_err}), falling back to urllib: {url}")
+
+    # Fallback to threaded urllib
+    return await asyncio.to_thread(_sync_fetch, url, all_params, headers)
+
+
 async def search_movies(query: str, year: Optional[int] = None) -> List[Dict[str, Any]]:
     """Search for movies by title or query string."""
     try:
         url = f"{TMDB_BASE_URL}/search/movie"
-        params = _get_params({"query": query, "include_adult": "false", "page": "1"})
+        params = {"query": query, "include_adult": "false", "page": "1"}
         if year:
             params["year"] = str(year)
 
-        async with aiohttp.ClientSession(headers=_get_headers()) as session:
-            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
-                if resp.status != 200:
-                    text = await resp.text()
-                    logger.error(f"TMDB search failed ({resp.status}): {text}")
-                    return []
-                data = await resp.json()
-                results = data.get("results", [])
+        data = await _safe_get(url, params)
+        results = data.get("results", [])
 
         movies = []
         for m in results[:5]:
@@ -112,13 +153,13 @@ async def discover_movies(
     """Discover movies filtered by genre, release timeframe, and rating."""
     try:
         url = f"{TMDB_BASE_URL}/discover/movie"
-        params = _get_params({
+        params: Dict[str, Any] = {
             "include_adult": "false",
             "sort_by": sort_by,
             "vote_count.gte": "100",
             "vote_average.gte": str(min_rating),
             "page": "1",
-        })
+        }
 
         if genre and genre.lower() in GENRE_MAP:
             params["with_genres"] = str(GENRE_MAP[genre.lower()])
@@ -128,14 +169,8 @@ async def discover_movies(
         if year_lte:
             params["primary_release_date.lte"] = f"{year_lte}-12-31"
 
-        async with aiohttp.ClientSession(headers=_get_headers()) as session:
-            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
-                if resp.status != 200:
-                    text = await resp.text()
-                    logger.error(f"TMDB discover failed ({resp.status}): {text}")
-                    return []
-                data = await resp.json()
-                results = data.get("results", [])
+        data = await _safe_get(url, params)
+        results = data.get("results", [])
 
         movies = []
         for m in results[:6]:
@@ -158,19 +193,16 @@ async def discover_movies(
 async def get_movie_details_and_extras(movie_id: int, region: str = "US") -> Dict[str, Any]:
     """Fetch comprehensive details, YouTube trailer, and streaming providers for a movie."""
     try:
-        async with aiohttp.ClientSession(headers=_get_headers()) as session:
-            # 1. Main details
-            async with session.get(f"{TMDB_BASE_URL}/movie/{movie_id}", params=_get_params(), timeout=aiohttp.ClientTimeout(total=6)) as r1:
-                details = await r1.json() if r1.status == 200 else {}
+        # 1. Main details
+        details = await _safe_get(f"{TMDB_BASE_URL}/movie/{movie_id}")
 
-            # 2. Videos / Trailers
-            async with session.get(f"{TMDB_BASE_URL}/movie/{movie_id}/videos", params=_get_params(), timeout=aiohttp.ClientTimeout(total=6)) as r2:
-                videos = (await r2.json()).get("results", []) if r2.status == 200 else []
+        # 2. Videos / Trailers
+        videos_data = await _safe_get(f"{TMDB_BASE_URL}/movie/{movie_id}/videos")
+        videos = videos_data.get("results", [])
 
-            # 3. Watch Providers
-            async with session.get(f"{TMDB_BASE_URL}/movie/{movie_id}/watch/providers", params=_get_params(), timeout=aiohttp.ClientTimeout(total=6)) as r3:
-                providers_raw = await r3.json() if r3.status == 200 else {}
-                providers_data = providers_raw.get("results", {}).get(region, {})
+        # 3. Watch Providers
+        providers_raw = await _safe_get(f"{TMDB_BASE_URL}/movie/{movie_id}/watch/providers")
+        providers_data = providers_raw.get("results", {}).get(region, {})
 
         trailer_key = None
         for v in videos:

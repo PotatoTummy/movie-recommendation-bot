@@ -2,8 +2,8 @@
 LiveKit Voice AI Movie Recommendation Agent (CineBot)
 Powered by:
 - LiveKit Agents v1.8
-- LLM: Grok (xAI) grok-2-latest
-- STT: Deepgram Nova-2
+- LLM: Grok (xAI) / Groq / OpenAI
+- STT: Deepgram Nova-3
 - TTS: Deepgram Aura
 - VAD: Silero VAD
 - Real-time WebRTC Data Channel synchronizer for dynamic UI updates
@@ -169,7 +169,7 @@ async def entrypoint(ctx: JobContext):
     # Initialize VAD
     vad = silero.VAD.load()
 
-    # Create the agent session and agent instance
+    # Create the agent session and agent instance with snappy endpointing
     session = AgentSession(
         stt=stt,
         vad=vad,
@@ -184,57 +184,16 @@ async def entrypoint(ctx: JobContext):
         tools=tools,
     )
 
-    # Start the voice session inside the room with transcription and text enabled
+    # Start the voice session inside the room
     await session.start(
         agent,
         room=ctx.room,
-        room_output_options=room_io.RoomOutputOptions(
-            transcription_enabled=True,
-            sync_transcription=True,
-        ),
-        room_input_options=room_io.RoomInputOptions(
-            text_enabled=True,
+        room_options=room_io.RoomOptions(
+            text_input=True,
+            text_output=True,
+            close_on_disconnect=False,
         ),
     )
-
-    async def broadcast_transcript(sender: str, text: str, is_final: bool):
-        """Broadcast live transcript updates over the data channel."""
-        if not ctx.room or not ctx.room.local_participant or not text.strip():
-            return
-        payload = json.dumps({
-            "type": "TRANSCRIPT_UPDATE",
-            "timestamp": int(time.time() * 1000),
-            "data": {
-                "id": str(int(time.time() * 1000)),
-                "sender": sender,
-                "text": text,
-                "is_final": is_final,
-            },
-        })
-        try:
-            await ctx.room.local_participant.publish_data(
-                payload.encode("utf-8"),
-                topic="movie_data",
-                reliable=True,
-            )
-        except Exception as e:
-            logger.error(f"Error broadcasting transcript: {e}")
-
-    @session.on("user_input_transcribed")
-    def on_user_transcript(ev):
-        if getattr(ev, "transcript", None):
-            asyncio.create_task(broadcast_transcript("user", ev.transcript, ev.is_final))
-
-    @session.on("conversation_item_added")
-    def on_conversation_item(ev):
-        if hasattr(ev, "item") and ev.item.role == "assistant":
-            content = ""
-            if isinstance(ev.item.content, str):
-                content = ev.item.content
-            elif isinstance(ev.item.content, list):
-                content = " ".join([str(c) for c in ev.item.content])
-            if content:
-                asyncio.create_task(broadcast_transcript("agent", content, True))
 
     # Handle typed text input from frontend text box
     @ctx.room.on("data_received")
@@ -246,7 +205,6 @@ async def entrypoint(ctx: JobContext):
                     text = msg.get("text", "").strip()
                     if text:
                         logger.info(f"Received text prompt from user: {text}")
-                        asyncio.create_task(broadcast_transcript("user", text, True))
                         session.generate_reply(user_input=text)
             except Exception as e:
                 logger.error(f"Error handling user text message: {e}")
@@ -261,4 +219,3 @@ if __name__ == "__main__":
             entrypoint_fnc=entrypoint,
         )
     )
-

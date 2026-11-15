@@ -14,7 +14,9 @@ export default function Home() {
     setIsConnecting(true);
     setError(null);
     try {
-      const res = await fetch("/api/token?room=cinebot-theater");
+      // Generate a unique room ID per session so LiveKit Cloud dispatches a fresh dedicated agent
+      const sessionRoom = `cinebot-${Math.random().toString(36).substring(2, 9)}`;
+      const res = await fetch(`/api/token?room=${sessionRoom}`);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to fetch LiveKit room token");
