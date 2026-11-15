@@ -6,7 +6,6 @@ import {
   RoomAudioRenderer,
   BarVisualizer,
   useVoiceAssistant,
-  useTrackToggle,
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, RoomEvent } from "livekit-client";
@@ -68,14 +67,58 @@ export function VoiceRoom({ token, serverUrl, onDisconnect }: VoiceRoomProps) {
 function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
   const room = useRoomContext();
   const { state: agentState, audioTrack } = useVoiceAssistant();
-  const { buttonProps: micButtonProps, enabled: isMicEnabled } = useTrackToggle({
-    source: Track.Source.Microphone,
-  });
 
+  const [isMicOn, setIsMicOn] = useState<boolean>(true);
   const [movies, setMovies] = useState<MovieItem[]>([]);
   const [gridTitle, setGridTitle] = useState<string>("Live Recommendations");
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   const [typedMessage, setTypedMessage] = useState<string>("");
+  const [isSearchingText, setIsSearchingText] = useState<boolean>(false);
+
+  // Sync hardware microphone status
+  useEffect(() => {
+    if (!room?.localParticipant) return;
+    setIsMicOn(room.localParticipant.isMicrophoneEnabled);
+
+    const updateMicState = () => {
+      if (room?.localParticipant) {
+        setIsMicOn(room.localParticipant.isMicrophoneEnabled);
+      }
+    };
+
+    room.on(RoomEvent.LocalTrackPublished, updateMicState);
+    room.on(RoomEvent.LocalTrackUnpublished, updateMicState);
+    room.on(RoomEvent.TrackMuted, updateMicState);
+    room.on(RoomEvent.TrackUnmuted, updateMicState);
+
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, updateMicState);
+      room.off(RoomEvent.LocalTrackUnpublished, updateMicState);
+      room.off(RoomEvent.TrackMuted, updateMicState);
+      room.off(RoomEvent.TrackUnmuted, updateMicState);
+    };
+  }, [room]);
+
+  // Turn microphone hardware track completely on/off
+  const handleToggleMicrophone = async () => {
+    if (!room?.localParticipant) return;
+    const target = !isMicOn;
+    try {
+      // setMicrophoneEnabled(false) unpublishes the track and stops the underlying
+      // browser MediaStreamTrack, turning off macOS/Chrome mic indicators immediately.
+      await room.localParticipant.setMicrophoneEnabled(target);
+      setIsMicOn(target);
+    } catch (err) {
+      console.error("Failed to toggle microphone hardware access:", err);
+    }
+  };
+
+  // Reset searching state once agent speaks
+  useEffect(() => {
+    if (agentState === "speaking") {
+      setIsSearchingText(false);
+    }
+  }, [agentState]);
 
   // Modals state
   const [activeTrailer, setActiveTrailer] = useState<{ key: string; title: string } | null>(null);
@@ -87,6 +130,9 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     if (e) e.preventDefault();
     const text = typedMessage.trim();
     if (!text || !room) return;
+
+    // Immediately trigger searching state on the UI badge
+    setIsSearchingText(true);
 
     // Instantly append to local transcript UI (deduplicated)
     setTranscripts((prev) => {
@@ -114,6 +160,7 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
       );
     } catch (err) {
       console.error("Failed to publish text message to agent:", err);
+      setIsSearchingText(false);
     }
   };
 
@@ -130,6 +177,7 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
         console.log("🎬 CineBot Data Channel Event received:", event.type, event.data);
 
         if (event.type === "MOVIE_RECOMMENDATIONS") {
+          setIsSearchingText(false);
           if (event.data.movies && event.data.movies.length > 0) {
             setMovies(event.data.movies);
             setGridTitle(
@@ -139,6 +187,7 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             );
           }
         } else if (event.type === "MOVIE_SEARCH_RESULTS") {
+          setIsSearchingText(false);
           if (event.data.movies && event.data.movies.length > 0) {
             setMovies(event.data.movies);
             setGridTitle(`Search: "${event.data.query}"`);
@@ -285,23 +334,29 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     }
   }, [room]);
 
-  // Format status badge
+  // Format status badge - prioritizing CineBot thinking/searching & speaking states
   const getAgentStatusBadge = () => {
-    if (!isMicEnabled) {
-      return { text: "Mic Muted • Type your request below", color: "bg-amber-400", ping: false };
+    // 1. CineBot actively processing (thinking or searching TMDB)
+    if (isSearchingText || agentState === "thinking") {
+      return { text: "CineBot is thinking & searching...", color: "bg-amber-400", ping: true };
     }
-    switch (agentState) {
-      case "listening":
-        return { text: "Listening to you...", color: "bg-emerald-500", ping: true };
-      case "thinking":
-        return { text: "CineBot is thinking & searching...", color: "bg-amber-400", ping: true };
-      case "speaking":
-        return { text: "CineBot is speaking...", color: "bg-red-500", ping: true };
-      case "connecting":
-        return { text: "Connecting to CineBot...", color: "bg-blue-500", ping: true };
-      default:
-        return { text: "Ready • Speak naturally", color: "bg-gray-400", ping: false };
+    // 2. CineBot speaking
+    if (agentState === "speaking") {
+      return { text: "CineBot is speaking...", color: "bg-red-500", ping: true };
     }
+    // 3. Connecting state
+    if (agentState === "connecting") {
+      return { text: "Connecting to CineBot...", color: "bg-blue-500", ping: true };
+    }
+    // 4. If hardware mic is stopped / off
+    if (!isMicOn) {
+      return { text: "Mic Off • Type your request below", color: "bg-gray-400", ping: false };
+    }
+    // 5. Listening state
+    if (agentState === "listening") {
+      return { text: "Listening to you...", color: "bg-emerald-500", ping: true };
+    }
+    return { text: "Ready • Speak naturally", color: "bg-emerald-400", ping: false };
   };
 
   const status = getAgentStatusBadge();
@@ -371,15 +426,15 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             )}
 
             <button
-              {...micButtonProps}
+              onClick={handleToggleMicrophone}
               className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200 ${
-                isMicEnabled
-                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                  : "border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                isMicOn
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 shadow-lg shadow-emerald-500/10"
+                  : "border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 shadow-lg shadow-red-500/10"
               }`}
-              title={isMicEnabled ? "Mute Microphone" : "Unmute Microphone"}
+              title={isMicOn ? "Turn off Microphone (Stop audio capture)" : "Turn on Microphone (Start audio capture)"}
             >
-              {isMicEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+              {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
             </button>
 
             <button

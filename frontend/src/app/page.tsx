@@ -3,12 +3,14 @@
 import React, { useState } from "react";
 import { Mic, Film, Sparkles, Tv, ShieldCheck, Zap } from "lucide-react";
 import { VoiceRoom } from "@/components/VoiceRoom";
+import { FairUsageModal } from "@/components/FairUsageModal";
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFairUsageOpen, setIsFairUsageOpen] = useState<boolean>(false);
 
   const startVoiceChat = async () => {
     setIsConnecting(true);
@@ -17,16 +19,15 @@ export default function Home() {
       // Generate a unique room ID per session so LiveKit Cloud dispatches a fresh dedicated agent
       const sessionRoom = `cinebot-${Math.random().toString(36).substring(2, 9)}`;
       const res = await fetch(`/api/token?room=${sessionRoom}`);
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to fetch LiveKit room token");
       }
-      const data = await res.json();
       setToken(data.token);
       setServerUrl(data.url);
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || "Could not connect to LiveKit room. Check your .env.local configuration.");
+      setError(err?.message || "Could not connect to LiveKit room. Check your connection or try again shortly.");
     } finally {
       setIsConnecting(false);
     }
@@ -39,6 +40,12 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#080b11]">
+      {/* Fair Usage Policy Modal */}
+      <FairUsageModal
+        isOpen={isFairUsageOpen}
+        onClose={() => setIsFairUsageOpen(false)}
+      />
+
       {/* Header Navigation */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-cine-border/80 bg-[#080b11]/80 px-6 py-4 backdrop-blur-md lg:px-12">
         <div className="flex items-center gap-3">
@@ -53,11 +60,20 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <button
+            onClick={() => setIsFairUsageOpen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-cine-border bg-cine-card px-3 py-1 text-xs text-gray-300 hover:text-white hover:border-red-500/40 transition"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-red-400" />
+            <span className="hidden sm:inline">Fair Usage</span>
+          </button>
+
           <div className="hidden sm:flex items-center gap-2 rounded-full border border-cine-border bg-cine-card px-3 py-1 text-xs text-gray-400">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>WebRTC Audio + Data Channels</span>
+            <span>WebRTC + Data Channels</span>
           </div>
+
           {token && (
             <button
               onClick={handleDisconnect}
@@ -101,13 +117,17 @@ export default function Home() {
 
             {/* Error Banner */}
             {error && (
-              <div className="w-full max-w-md rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-xs text-red-300">
-                {error}
+              <div className="w-full max-w-lg rounded-2xl border border-red-500/50 bg-red-500/10 p-4 text-xs text-red-300 flex items-start gap-3 text-left shadow-lg shadow-red-500/10 animate-fade-in">
+                <ShieldCheck className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-white">Notice</p>
+                  <p className="mt-0.5 text-red-300/90 leading-relaxed">{error}</p>
+                </div>
               </div>
             )}
 
             {/* Connect CTA Button */}
-            <div className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="flex flex-col items-center gap-3">
               <button
                 onClick={startVoiceChat}
                 disabled={isConnecting}
@@ -117,6 +137,13 @@ export default function Home() {
                   <Mic className="h-4 w-4 fill-white" />
                 </div>
                 <span>{isConnecting ? "Connecting to LiveKit Room..." : "Start Voice Conversation"}</span>
+              </button>
+
+              <button
+                onClick={() => setIsFairUsageOpen(true)}
+                className="text-[11px] text-gray-500 hover:text-gray-300 underline underline-offset-4 transition"
+              >
+                Portfolio Demo • 10-min session cap • Fair Usage Policy
               </button>
             </div>
 
@@ -128,7 +155,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-base font-bold text-white">Sub-300ms Voice WebRTC</h3>
                 <p className="mt-1 text-xs text-gray-400">
-                  Powered by LiveKit Agents, Grok xAI reasoning, and Deepgram voice synthesis for natural conversational interruption.
+                  Powered by LiveKit Agents, Grok / Groq reasoning, and Deepgram voice synthesis for natural conversational interruption.
                 </p>
               </div>
 
@@ -148,7 +175,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-base font-bold text-white">Trailers & Streaming</h3>
                 <p className="mt-1 text-xs text-gray-400">
-                  Integrated with TMDB & JustWatch to launch full YouTube trailers and reveal active streaming providers.
+                  Integrated with TMDB to launch full YouTube trailers and reveal active streaming providers.
                 </p>
               </div>
             </div>
@@ -157,8 +184,15 @@ export default function Home() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-cine-border/50 py-6 text-center text-xs text-gray-500">
-        Built with LiveKit Cloud &bull; TMDB API &bull; Grok xAI &bull; Next.js 15
+      <footer className="border-t border-cine-border/50 py-6 text-center text-xs text-gray-500 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <span>Built with LiveKit Cloud &bull; TMDB API &bull; Deepgram Nova-3 &bull; Next.js 15</span>
+        <span className="hidden sm:inline">&bull;</span>
+        <button
+          onClick={() => setIsFairUsageOpen(true)}
+          className="text-gray-400 hover:text-white underline underline-offset-2 transition"
+        >
+          Fair Usage Policy
+        </button>
       </footer>
     </main>
   );
