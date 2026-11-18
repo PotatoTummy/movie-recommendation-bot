@@ -33,44 +33,86 @@
   color-scheme: dark;
 }
 
+/* 1. The Matrix (Cyber Terminal & Digital Rain Scanlines) */
 :root[data-egg="matrix"] {
   --paper: #031a0b;
   --ink: #5cff8f;
   --hot: #b8ffd0;
-  --wash: rgba(92, 255, 143, 0.1);
+  --wash: rgba(92, 255, 143, 0.12);
   color-scheme: dark;
 }
+:root[data-egg="matrix"] body {
+  background-image: 
+    linear-gradient(rgba(3, 26, 11, 0.94), rgba(3, 26, 11, 0.94)),
+    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(92, 255, 143, 0.04) 2px, rgba(92, 255, 143, 0.04) 4px);
+  text-shadow: 0 0 6px rgba(92, 255, 143, 0.4);
+}
 
+/* 2. Interstellar (Gargantua Cosmic Dust & Gravitational Glow) */
 :root[data-egg="interstellar"] {
   --paper: #1a1209;
   --ink: #e8d5b0;
   --hot: #ffb347;
-  --wash: rgba(232, 213, 176, 0.1);
+  --wash: rgba(232, 213, 176, 0.12);
   color-scheme: dark;
 }
+:root[data-egg="interstellar"] body {
+  background-image: 
+    radial-gradient(circle at 85% 15%, rgba(255, 179, 71, 0.15) 0%, transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(79, 70, 229, 0.1) 0%, transparent 40%),
+    linear-gradient(#1a1209, #0d0905);
+}
 
+/* 3. Fight Club (35mm Film Burn Splice & Paper Soap Flicker) */
 :root[data-egg="fight"] {
   --paper: #e9b8c4;
   --ink: #3b0f1a;
   --hot: #8a1f2d;
-  --wash: rgba(59, 15, 26, 0.1);
+  --wash: rgba(59, 15, 26, 0.12);
   color-scheme: light;
 }
+@keyframes filmSplice {
+  0%, 100% { opacity: 1; }
+  49% { opacity: 1; }
+  50% { opacity: 0.95; filter: contrast(110%); }
+  51% { opacity: 1; filter: none; }
+}
+:root[data-egg="fight"] body {
+  animation: filmSplice 6s infinite;
+  background-image: radial-gradient(circle at 50% 50%, rgba(138, 31, 45, 0.05) 0%, rgba(59, 15, 26, 0.15) 100%);
+}
 
+/* 4. The Godfather (1940s Vintage Sepia Noir & Vignette) */
 :root[data-egg="godfather"] {
   --paper: #1b1410;
   --ink: #d9c7a3;
   --hot: #c0392b;
-  --wash: rgba(217, 199, 163, 0.1);
+  --wash: rgba(217, 199, 163, 0.12);
   color-scheme: dark;
 }
+:root[data-egg="godfather"] body {
+  background-image: 
+    radial-gradient(ellipse at center, rgba(35, 25, 20, 0.7) 0%, rgba(10, 7, 5, 0.95) 100%),
+    linear-gradient(#1b1410, #130e0b);
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.8);
+}
 
+/* 5. Star Wars (Deep Galaxy Starfield Void) */
 :root[data-egg="starwars"] {
   --paper: #050816;
   --ink: #ffe81f;
   --hot: #ffe81f;
-  --wash: rgba(255, 232, 31, 0.1);
+  --wash: rgba(255, 232, 31, 0.12);
   color-scheme: dark;
+}
+:root[data-egg="starwars"] body {
+  background-image: 
+    radial-gradient(1px 1px at 20px 30px, #ffe81f, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 40px 70px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1.5px 1.5px at 90px 40px, #ffe81f, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 160px 120px, #ffffff, rgba(0,0,0,0)),
+    linear-gradient(#050816, #02040a);
+  background-size: 250px 250px, 300px 300px, 350px 350px, 200px 200px, 100% 100%;
 }
 
 *, *::before, *::after {

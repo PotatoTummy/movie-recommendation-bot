@@ -1,11 +1,11 @@
 """
-LiveKit Voice AI Movie Recommendation Agent (CineBot)
+LiveKit Voice AI Movie Recommendation Agent (Flicker)
 Powered by:
 - LiveKit Agents v1.8
-- LLM: Grok (xAI) / Groq / OpenAI
+- LLM: Groq (llama-3.3-70b-versatile) / OpenAI fallback
 - STT: Deepgram Nova-3
 - TTS: Deepgram Aura
-- VAD: Silero VAD
+- VAD: Silero VAD (tuned for natural conversational pauses)
 - Real-time WebRTC Data Channel synchronizer for dynamic UI updates
 """
 
@@ -48,7 +48,7 @@ from tools.tmdb import (
     search_movies,
 )
 
-logger = logging.getLogger("cinebot-agent")
+logger = logging.getLogger("flicker-agent")
 
 
 class MovieTools:
@@ -94,7 +94,7 @@ class MovieTools:
             logger.error(f"Failed to broadcast data channel event: {e}")
 
     @function_tool(
-        description="Recommend a specific curated list of movies by title (e.g. titles=['Chennai Express', 'Happy New Year', 'Baadshah'] or titles=['Se7en', 'Zodiac', 'Fight Club']). Use this when recommending movies based on a specific actor, director, theme, or concept so exact matching posters display on screen."
+        description="Recommend a specific curated list of movies by title (e.g. titles=['Enthiran', 'Ra.One', '2.0'] or titles=['Blade Runner 2049', 'Solaris', 'Under the Skin']). Call this ONCE after the user has completely finished speaking so matching posters land on screen."
     )
     async def recommend_movies_by_titles(self, titles: list[str]) -> str:
         """Fetch and display movie cards for specific titles chosen by the sommelier."""
@@ -120,7 +120,7 @@ class MovieTools:
         genre: Optional[str] = None,
         year_gte: Optional[int] = None,
         year_lte: Optional[int] = None,
-        min_rating: float = 6.5,
+        min_rating: float = 6.0,
     ) -> str:
         """Discover movies matching specific criteria."""
         clean_genre = (genre or "").lower().strip()
@@ -151,16 +151,16 @@ class MovieTools:
         return json.dumps([])
 
     @function_tool(
-        description="Get movie details including YouTube trailer and streaming providers (Netflix, Prime, Disney+) using the TMDB movie ID."
+        description="Get movie details including YouTube trailer and streaming providers (Netflix, Prime, Disney+, JioCinema) using the TMDB movie ID."
     )
     async def get_movie_details_and_extras(self, movie_id: int) -> str:
-        """Fetch synopsis, trailers, and where to stream."""
-        details = await get_movie_details_and_extras(movie_id=movie_id)
+        """Fetch synopsis, trailers, and where to stream in India/US."""
+        details = await get_movie_details_and_extras(movie_id=movie_id, region="IN")
         await self._broadcast("MOVIE_DETAILS", details)
         return json.dumps(details)
 
     @function_tool(
-        description="Get the list of movies currently on the user's screen when the user asks follow-up questions (e.g. 'What was the first movie again?', 'Which movies are currently on my screen?')."
+        description="Get the list of movies currently on the user's shelf when the user asks follow-up questions (e.g. 'What was the first movie again?', 'Which movies are currently on my screen?')."
     )
     async def get_active_on_screen_movies(self) -> str:
         """Fetch active recommendations currently visible on screen."""
@@ -175,7 +175,7 @@ async def entrypoint(ctx: JobContext):
 
     # Wait for the user participant to join
     participant = await ctx.wait_for_participant()
-    logger.info(f"Started CineBot session for participant: {participant.identity}")
+    logger.info(f"Started Flicker session for participant: {participant.identity}")
 
     # Initialize tools with room context for WebRTC data broadcasts
     movie_tools = MovieTools(room=ctx.room)
@@ -187,52 +187,48 @@ async def entrypoint(ctx: JobContext):
         movie_tools.get_active_on_screen_movies,
     ]
 
-    # Flexible LLM provider resolution (Groq, OpenAI, or Grok/xAI)
+    # Flexible ultra-fast LLM provider resolution (prefer llama-3.3-70b-versatile on Groq for 300+ tok/s speed)
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    grok_key = os.environ.get("GROK_API_KEY", "").strip() or os.environ.get("XAI_API_KEY", "").strip()
 
     if groq_key and not groq_key.startswith("your_"):
-        logger.info("Configuring Groq LLM (openai/gpt-oss-120b)")
+        logger.info("Configuring Groq LLM (llama-3.3-70b-versatile for ultra-low latency)")
         llm = openai.LLM(
             base_url="https://api.groq.com/openai/v1",
             api_key=groq_key,
-            model="openai/gpt-oss-120b",
-            temperature=0.7,
+            model="llama-3.3-70b-versatile",
+            temperature=0.6,
         )
     elif openai_key and not openai_key.startswith("your_"):
         logger.info("Configuring OpenAI LLM (gpt-4o-mini)")
         llm = openai.LLM(
             api_key=openai_key,
             model="gpt-4o-mini",
-            temperature=0.7,
-        )
-    elif grok_key and not grok_key.startswith("your_"):
-        logger.info("Configuring Grok (xAI) LLM (grok-2-latest)")
-        llm = openai.LLM.with_x_ai(
-            api_key=grok_key,
-            model="grok-2-latest",
-            temperature=0.7,
+            temperature=0.6,
         )
     else:
-        raise ValueError("No valid LLM key found. Please set GROQ_API_KEY, OPENAI_API_KEY, or GROK_API_KEY in agent/.env")
+        raise ValueError("No valid LLM key found. Please set GROQ_API_KEY or OPENAI_API_KEY in agent/.env")
 
     # Initialize Deepgram STT and TTS
     deepgram_key = os.environ.get("DEEPGRAM_API_KEY")
     stt = deepgram.STT(api_key=deepgram_key)
     tts = deepgram.TTS(api_key=deepgram_key, model="aura-asteria-en")
 
-    # Initialize VAD
-    vad = silero.VAD.load()
+    # Initialize Silero VAD tuned for natural conversational speech
+    # min_silence_duration=0.85 ensures short thinking pauses in speech don't prematurely trigger an interruption
+    vad = silero.VAD.load(
+        min_speech_duration=0.25,
+        min_silence_duration=0.85,
+    )
 
-    # Create the agent session and agent instance with snappy endpointing
+    # Session with generous endpointing delays so the user isn't cut off mid-thought
     session = AgentSession(
         stt=stt,
         vad=vad,
         llm=llm,
         tts=tts,
-        min_endpointing_delay=0.4,
-        max_endpointing_delay=1.2,
+        min_endpointing_delay=0.85,
+        max_endpointing_delay=2.5,
     )
 
     agent = Agent(
@@ -251,7 +247,7 @@ async def entrypoint(ctx: JobContext):
         ),
     )
 
-    # Handle typed text input from frontend text box
+    # Handle typed text input and skip signals from frontend
     @ctx.room.on("data_received")
     def on_data_received(data_packet):
         if data_packet.topic == "movie_data":
@@ -266,9 +262,9 @@ async def entrypoint(ctx: JobContext):
                     logger.info("Received interrupt/skip signal from user")
                     session.interrupt(force=True)
             except Exception as e:
-                logger.error(f"Error handling user text message: {e}")
+                logger.error(f"Error handling data channel message: {e}")
 
-    # Give friendly spoken welcome to kick off conversation
+    # Friendly spoken welcome
     session.say(WELCOME_MESSAGE, allow_interruptions=True)
 
 

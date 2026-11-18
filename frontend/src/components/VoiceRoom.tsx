@@ -14,6 +14,7 @@ import { EASTER_EGG_TRIGGERS } from "@/types/easterEggs";
 import { MovieGrid } from "./MovieGrid";
 import { TrailerModal } from "./TrailerModal";
 import { StreamingModal } from "./StreamingModal";
+import { EasterEggHintsDrawer } from "./EasterEggHintsDrawer";
 
 interface LogItem {
   id: string;
@@ -30,6 +31,39 @@ interface VoiceRoomProps {
   onDisconnect: () => void;
 }
 
+/** FormattedText: Converts markdown asterisks (**bold**, ***bold-italic***) into real HTML strong/em tags */
+function FormattedText({ text }: { text: string }) {
+  const parts = text.split(/(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (part.startsWith("***") && part.endsWith("***")) {
+          return (
+            <strong key={i} className="font-bold italic text-[var(--ink)]">
+              {part.slice(3, -3)}
+            </strong>
+          );
+        }
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <strong key={i} className="font-bold text-[var(--ink)]">
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        if (part.startsWith("*") && part.endsWith("*")) {
+          return (
+            <em key={i} className="italic">
+              {part.slice(1, -1)}
+            </em>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
 export function VoiceRoom({
   token,
   serverUrl,
@@ -37,7 +71,6 @@ export function VoiceRoom({
   onConnect,
   onDisconnect,
 }: VoiceRoomProps) {
-  // If we have token and serverUrl, wrap inside LiveKitRoom; otherwise render standalone room preview
   if (token && serverUrl) {
     return (
       <LiveKitRoom
@@ -81,18 +114,16 @@ function VoiceRoomInner({
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
-  // LiveKit room hooks (safely accessed when inside LiveKitRoom)
   let room: any = null;
   let voiceAssistant: any = null;
   try {
     room = useRoomContext();
     voiceAssistant = useVoiceAssistant();
-  } catch {
-    // Rendered outside LiveKitRoom before connecting
-  }
+  } catch {}
 
   const agentState = voiceAssistant?.state || "disconnected";
   const [isMicOn, setIsMicOn] = useState<boolean>(true);
+  const [isUserSpeaking, setIsUserSpeaking] = useState<boolean>(false);
   const [movies, setMovies] = useState<MovieItem[]>(PREMIERE_SHOWCASE);
   const [shelfCount, setShelfCount] = useState<string>("6 films, in the order I mention them");
   const [logItems, setLogItems] = useState<LogItem[]>([
@@ -107,6 +138,7 @@ function VoiceRoomInner({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isToastVisible, setIsToastVisible] = useState<boolean>(false);
   const [foundThemes, setFoundThemes] = useState<Set<string>>(new Set());
+  const [isHintsOpen, setIsHintsOpen] = useState<boolean>(false);
 
   // Modals / Drawers
   const [activeTrailer, setActiveTrailer] = useState<{ key: string; title: string } | null>(null);
@@ -119,7 +151,7 @@ function VoiceRoomInner({
   // Load unlocked themes from localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("cinebot_found_themes");
+      const saved = localStorage.getItem("flicker_found_themes");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
@@ -129,7 +161,6 @@ function VoiceRoomInner({
     } catch {}
   }, []);
 
-  // Show Toast
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setIsToastVisible(true);
@@ -157,11 +188,11 @@ function VoiceRoomInner({
             const next = new Set(prev);
             next.add(t.id);
             try {
-              localStorage.setItem("cinebot_found_themes", JSON.stringify([...next]));
+              localStorage.setItem("flicker_found_themes", JSON.stringify([...next]));
             } catch {}
             return next;
           });
-          showToast(`${t.name} theme found`);
+          showToast(`${t.name} theme awakened`);
           return true;
         }
       }
@@ -169,6 +200,16 @@ function VoiceRoomInner({
     },
     [showToast]
   );
+
+  const handleSelectTheme = (id: string | null) => {
+    if (!id) {
+      delete document.documentElement.dataset.egg;
+      showToast("Default theme restored");
+    } else {
+      document.documentElement.dataset.egg = id;
+      showToast(`${id.toUpperCase()} theme active`);
+    }
+  };
 
   // Sync Hardware Microphone state
   useEffect(() => {
@@ -226,6 +267,13 @@ function VoiceRoomInner({
         if (!text) return;
         const isAgent = trans.participantIdentity !== room.localParticipant.identity;
 
+        // Track active user speaking state
+        if (!isAgent && !trans.final) {
+          setIsUserSpeaking(true);
+        } else if (!isAgent && trans.final) {
+          setTimeout(() => setIsUserSpeaking(false), 500);
+        }
+
         // Check for easter eggs in final speech transcription
         if (trans.final) {
           checkEasterEgg(text);
@@ -252,24 +300,29 @@ function VoiceRoomInner({
     };
   }, [room, checkEasterEgg]);
 
-  // Drive Waveform Meter
+  // Waveform Meter strictly moves ONLY when someone is ACTUALLY speaking!
   useEffect(() => {
-    const isSpeaking = agentState === "speaking" || agentState === "listening";
+    // If mic is muted AND bot is not speaking, waveform MUST be 100% flat (4px)!
+    const isBotSpeaking = agentState === "speaking";
+    const isUserActuallySpeaking = isMicOn && isUserSpeaking;
+    const isActivelyTalking = isBotSpeaking || isUserActuallySpeaking;
+
     const reducedMotion =
       typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    if (!isSpeaking || reducedMotion) {
+    if (!isActivelyTalking || reducedMotion) {
       clearInterval(meterIntervalRef.current);
       setMeterHeights(new Array(48).fill(4));
       return;
     }
 
+    // Only animate bars while sound is actively being emitted
     meterIntervalRef.current = setInterval(() => {
       setMeterHeights(new Array(48).fill(0).map(() => 4 + Math.random() * 42));
-    }, 110);
+    }, 100);
 
     return () => clearInterval(meterIntervalRef.current);
-  }, [agentState]);
+  }, [agentState, isMicOn, isUserSpeaking]);
 
   // Toggle Microphone Hardware Access
   const handleToggleMic = async () => {
@@ -282,6 +335,9 @@ function VoiceRoomInner({
     try {
       await room.localParticipant.setMicrophoneEnabled(target);
       setIsMicOn(target);
+      if (!target) {
+        setIsUserSpeaking(false);
+      }
     } catch (err) {
       console.error("Failed to toggle microphone:", err);
     }
@@ -383,7 +439,7 @@ function VoiceRoomInner({
       if (res.ok && detailsRes.ok) {
         const pData = await res.json();
         const dData = await detailsRes.json();
-        const us = pData.results?.US || {};
+        const inResults = pData.results?.IN || pData.results?.US || {};
         setActiveDetails({
           id: movieId,
           title: dData.title,
@@ -395,8 +451,8 @@ function VoiceRoomInner({
           backdrop_url: dData.backdrop_path ? `https://image.tmdb.org/t/p/w1280${dData.backdrop_path}` : null,
           trailer_youtube_url: null,
           trailer_youtube_key: null,
-          streaming_providers: (us.flatrate || []).map((p: any) => p.provider_name),
-          rent_providers: (us.rent || []).map((p: any) => p.provider_name),
+          streaming_providers: (inResults.flatrate || []).map((p: any) => p.provider_name),
+          rent_providers: (inResults.rent || []).map((p: any) => p.provider_name),
         });
       }
     } catch (e) {
@@ -404,7 +460,6 @@ function VoiceRoomInner({
     }
   };
 
-  // Mic Button Text
   const micButtonLabel = !isConnected
     ? isConnecting
       ? "Connecting..."
@@ -420,12 +475,12 @@ function VoiceRoomInner({
       {/* Header */}
       <header className="flex justify-between items-baseline px-4 sm:px-8 lg:px-12 py-5">
         <span className="font-display text-3xl sm:text-4xl tracking-tight leading-none">
-          CineBot
+          Flicker
         </span>
         <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => showToast('Say or type a famous line to find one. Type "reset" to go back.')}
+            onClick={() => setIsHintsOpen(true)}
             className="border-b-2 border-[var(--ink)] pb-0.5 text-sm font-medium hover:text-[var(--hot)] hover:border-[var(--hot)] transition cursor-pointer"
             aria-label="Hidden themes found"
           >
@@ -452,7 +507,7 @@ function VoiceRoomInner({
           </h1>
 
           <p className="text-base sm:text-lg max-w-[34ch] mb-8 opacity-85 leading-relaxed">
-            Talk to CineBot like a friend behind the video-store counter. Posters land on the shelf as it answers.
+            Talk to Flicker like a friend behind the video-store counter. Posters land on the shelf as it answers.
           </p>
 
           {/* Talk Row (Mic Button + Live Waveform Meter + Skip Button) */}
@@ -493,7 +548,7 @@ function VoiceRoomInner({
             </div>
           </div>
 
-          {/* Subtitle Log (aria-live="polite") */}
+          {/* Subtitle Log (aria-live="polite") with Bold Markdown Parser */}
           <div
             className="min-h-[9rem] border-l-4 border-[var(--hot)] pl-4 mb-6 space-y-3"
             aria-live="polite"
@@ -501,13 +556,13 @@ function VoiceRoomInner({
             {logItems.map((item) => (
               <p
                 key={item.id}
-                className={`max-w-[42ch] transition-opacity ${
+                className={`max-w-[42ch] transition-opacity leading-relaxed ${
                   item.sender === "you"
                     ? "opacity-65 text-base"
                     : "font-medium text-lg sm:text-xl leading-snug"
                 }`}
               >
-                {item.text}
+                <FormattedText text={item.text} />
               </p>
             ))}
           </div>
@@ -596,6 +651,14 @@ function VoiceRoomInner({
       <StreamingModal
         movie={activeDetails}
         onClose={() => setActiveDetails(null)}
+      />
+
+      {/* Easter Egg Hints Drawer */}
+      <EasterEggHintsDrawer
+        isOpen={isHintsOpen}
+        onClose={() => setIsHintsOpen(false)}
+        foundThemes={foundThemes}
+        onSelectTheme={handleSelectTheme}
       />
 
       {/* Easter Egg & General Toast */}

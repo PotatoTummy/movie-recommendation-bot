@@ -17,8 +17,8 @@ const hankenGrotesk = Hanken_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "CineBot — ask for a film out loud",
-  description: "Talk to CineBot like a friend behind the video-store counter. Posters land on the shelf as it answers.",
+  title: "Flicker — ask for a film out loud",
+  description: "Talk to Flicker like a friend behind the video-store counter. Posters land on the shelf as it answers.",
 };
 
 export default function RootLayout({
