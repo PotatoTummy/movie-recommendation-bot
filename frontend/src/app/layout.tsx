@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CineBot | LiveKit Voice Movie Sommelier",
-  description: "Real-time voice interactive AI movie recommendation assistant built with LiveKit WebRTC and TMDB",
+  description: "Real-time conversational AI movie recommendation assistant built with LiveKit WebRTC and TMDB",
 };
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className="min-h-screen bg-[#080b11] text-gray-100 antialiased selection:bg-red-500/30 selection:text-white"
+        className="min-h-screen bg-[#06070a] text-gray-100 antialiased selection:bg-amber-500/30 selection:text-amber-200"
         suppressHydrationWarning
       >
         {children}

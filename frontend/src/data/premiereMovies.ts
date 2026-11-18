@@ -1,0 +1,58 @@
+import { MovieItem } from "@/types/movie";
+
+export const PREMIERE_SHOWCASE: MovieItem[] = [
+  {
+    id: 27205,
+    title: "Inception",
+    release_date: "2010-07-16",
+    rating: 8.4,
+    vote_count: 36240,
+    overview: "A thief who steals corporate secrets through the use of dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.",
+    poster_url: "https://image.tmdb.org/t/p/w500/ljsZTbVsrQSqZgWeep2B1QiDKuh.jpg",
+  },
+  {
+    id: 157336,
+    title: "Interstellar",
+    release_date: "2014-11-05",
+    rating: 8.4,
+    vote_count: 34890,
+    overview: "When Earth becomes uninhabitable in the future, a farmer and ex-NASA pilot, Joseph Cooper, is tasked to pilot a spacecraft, along with a team of researchers, to find a new planet for humans.",
+    poster_url: "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
+  },
+  {
+    id: 335984,
+    title: "Blade Runner 2049",
+    release_date: "2017-10-04",
+    rating: 8.0,
+    vote_count: 13200,
+    overview: "Thirty years after the events of the first film, a new blade runner, LAPD Officer K, unearths a long-buried secret that has the potential to plunge what's left of society into chaos.",
+    poster_url: "https://image.tmdb.org/t/p/w500/gajva2L0rPYkEWjzgFlBXCAVBE5.jpg",
+  },
+  {
+    id: 807,
+    title: "Se7en",
+    release_date: "1995-09-22",
+    rating: 8.4,
+    vote_count: 20450,
+    overview: "Two detectives, a rookie and a veteran, hunt a serial killer who uses the seven deadly sins as his motives in a dark and rain-soaked metropolis.",
+    poster_url: "https://image.tmdb.org/t/p/w500/6yoghtyTpznpBik8EngEmJskVUO.jpg",
+  },
+  {
+    id: 496243,
+    title: "Parasite",
+    release_date: "2019-05-30",
+    rating: 8.5,
+    vote_count: 18120,
+    overview: "All unemployed, Ki-taek's family takes peculiar interest in the wealthy and glamorous Parks for their livelihood until they get entangled in an unexpected incident.",
+    poster_url: "https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg",
+  },
+  {
+    id: 693134,
+    title: "Dune: Part Two",
+    release_date: "2024-02-27",
+    rating: 8.2,
+    vote_count: 5800,
+    overview: "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family, facing a choice between love and the fate of the universe.",
+    poster_url: "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
+  },
+];

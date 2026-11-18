@@ -8,11 +8,15 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        cinzel: ["'Cinzel'", "Georgia", "serif"],
+        sans: ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
+      },
       colors: {
         cine: {
-          dark: "#0b0e14",
-          card: "#121824",
-          border: "#1f293d",
+          dark: "#06070a",
+          card: "#0f1420",
+          border: "#1c2536",
           accent: "#e50914",
           gold: "#f5c518",
           purple: "#7928ca",

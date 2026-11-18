@@ -5,14 +5,13 @@ import {
   Mic,
   Film,
   Sparkles,
-  Tv,
   ShieldCheck,
-  Zap,
-  Clapperboard,
   Ticket,
   Trophy,
   Compass,
-  X,
+  Star,
+  Clapperboard,
+  Tv,
 } from "lucide-react";
 import { VoiceRoom } from "@/components/VoiceRoom";
 import { FairUsageModal } from "@/components/FairUsageModal";
@@ -21,7 +20,12 @@ import { InterstellarCanvas } from "@/components/InterstellarCanvas";
 import { StarWarsCrawl } from "@/components/StarWarsCrawl";
 import { EasterEggVaultModal } from "@/components/EasterEggVaultModal";
 import { EasterEggBanner } from "@/components/EasterEggBanner";
+import { MovieCard } from "@/components/MovieCard";
+import { TrailerModal } from "@/components/TrailerModal";
+import { StreamingModal } from "@/components/StreamingModal";
+import { PREMIERE_SHOWCASE } from "@/data/premiereMovies";
 import { EasterEgg, EASTER_EGGS } from "@/types/easterEggs";
+import { MovieDetails } from "@/types/movie";
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
@@ -37,9 +41,9 @@ export default function Home() {
   const [newlyUnlockedEgg, setNewlyUnlockedEgg] = useState<EasterEgg | null>(null);
   const [keyBuffer, setKeyBuffer] = useState<string>("");
 
-  // Clapperboard Take counter
-  const [headerTakes, setHeaderTakes] = useState<number>(1);
-  const [isClappingHeader, setIsClappingHeader] = useState<boolean>(false);
+  // Modals on landing page showcase
+  const [activeTrailer, setActiveTrailer] = useState<{ key: string; title: string } | null>(null);
+  const [activeDetails, setActiveDetails] = useState<MovieDetails | null>(null);
 
   // VIP Ticket Stamp Easter Egg
   const [isVipStamped, setIsVipStamped] = useState<boolean>(false);
@@ -77,7 +81,7 @@ export default function Home() {
     });
   };
 
-  // Global keystroke listener for secret cinema keywords
+  // Global keystroke listener for desktop power users
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -110,12 +114,6 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [keyBuffer, activeTheme]);
 
-  const snapHeaderClapper = () => {
-    setIsClappingHeader(true);
-    setHeaderTakes((prev) => prev + 1);
-    setTimeout(() => setIsClappingHeader(false), 300);
-  };
-
   const startVoiceChat = async () => {
     setIsConnecting(true);
     setError(null);
@@ -144,6 +142,53 @@ export default function Home() {
     setServerUrl(null);
   };
 
+  const handleWatchTrailer = async (movieId: number, title: string) => {
+    try {
+      const res = await fetch(`https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=48e9c4038a834223ba99f7d2be73eb8b`);
+      if (res.ok) {
+        const data = await res.json();
+        const trailer = (data.results || []).find(
+          (v: any) => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser")
+        );
+        if (trailer) {
+          setActiveTrailer({ key: trailer.key, title });
+        } else {
+          alert(`No YouTube trailer available for ${title}.`);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching trailer:", e);
+    }
+  };
+
+  const handleCheckProviders = async (movieId: number) => {
+    try {
+      const res = await fetch(`https://api.themoviedb.org/3/movie/${movieId}/watch/providers?api_key=48e9c4038a834223ba99f7d2be73eb8b`);
+      const detailsRes = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?api_key=48e9c4038a834223ba99f7d2be73eb8b`);
+      if (res.ok && detailsRes.ok) {
+        const pData = await res.json();
+        const dData = await detailsRes.json();
+        const us = pData.results?.US || {};
+        setActiveDetails({
+          id: movieId,
+          title: dData.title,
+          overview: dData.overview,
+          release_date: dData.release_date,
+          rating: dData.vote_average,
+          genres: (dData.genres || []).map((g: any) => g.name),
+          poster_url: dData.poster_path ? `https://image.tmdb.org/t/p/w500${dData.poster_path}` : null,
+          backdrop_url: dData.backdrop_path ? `https://image.tmdb.org/t/p/w1280${dData.backdrop_path}` : null,
+          trailer_youtube_url: null,
+          trailer_youtube_key: null,
+          streaming_providers: (us.flatrate || []).map((p: any) => p.provider_name),
+          rent_providers: (us.rent || []).map((p: any) => p.provider_name),
+        });
+      }
+    } catch (e) {
+      console.error("Error checking providers:", e);
+    }
+  };
+
   const isMatrix = activeTheme === "matrix";
   const isInterstellar = activeTheme === "interstellar";
   const isFightClub = activeTheme === "fightclub";
@@ -163,7 +208,7 @@ export default function Home() {
           : "bg-[#06070a] text-gray-100"
       }`}
     >
-      {/* Easter Egg Dynamic Canvases */}
+      {/* Easter Egg Background Canvases */}
       <MatrixRainCanvas active={isMatrix} />
       <InterstellarCanvas active={isInterstellar} />
       <StarWarsCrawl
@@ -188,25 +233,26 @@ export default function Home() {
         onClose={() => setIsFairUsageOpen(false)}
       />
 
-      {/* Easter Egg Vault Modal */}
+      {/* Easter Egg Treasure Hunt Vault Modal */}
       <EasterEggVaultModal
         isOpen={isVaultOpen}
         onClose={() => setIsVaultOpen(false)}
         unlockedIds={unlockedIds}
         activeTheme={activeTheme}
         onSelectTheme={(id) => setActiveTheme(id)}
+        onSolveEgg={(id) => unlockEgg(id)}
       />
 
-      {/* Achievement Banner Toast when unlocking an Easter Egg */}
+      {/* Achievement Banner Toast */}
       <EasterEggBanner
         unlockedEgg={newlyUnlockedEgg}
         onDismiss={() => setNewlyUnlockedEgg(null)}
         totalUnlocked={unlockedIds.length}
       />
 
-      {/* Floating Active Theme Bar */}
+      {/* Active Theme Bar */}
       {activeTheme && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full border border-amber-400/50 bg-black/85 px-4 py-1.5 text-xs font-mono font-bold text-amber-300 shadow-2xl backdrop-blur-md animate-fade-in">
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full border border-amber-400/50 bg-black/90 px-4 py-1.5 text-xs font-mono font-bold text-amber-300 shadow-2xl backdrop-blur-md animate-fade-in">
           <span>THEME ACTIVE: &ldquo;{activeTheme.toUpperCase()}&rdquo;</span>
           <span className="text-gray-500">&bull;</span>
           <button
@@ -218,74 +264,56 @@ export default function Home() {
         </div>
       )}
 
-      {/* Grand Cinema Marquee Header */}
+      {/* 1. Vintage Cinema Marquee Header */}
       <header
         className={`sticky top-0 z-30 flex flex-col border-b backdrop-blur-md transition-all duration-500 ${
           isMatrix
             ? "border-[#00FF41]/30 bg-[#051309]/90"
             : isInterstellar
             ? "border-amber-500/30 bg-[#070b16]/90"
-            : "border-[#1c2436] bg-[#080b12]/90 shadow-2xl shadow-black/80"
+            : "border-[#1c2436] bg-[#080b12]/95 shadow-2xl shadow-black/90"
         }`}
       >
-        {/* Top Marquee Bulb Chaser Bar */}
-        <div className="flex justify-between items-center px-4 py-1.5 border-b border-white/5 text-[10px] font-mono tracking-widest text-amber-400 bg-black/60 select-none overflow-hidden">
+        {/* Top Incandescent Bulb Chaser Bar */}
+        <div className="flex justify-between items-center px-4 py-1.5 border-b border-white/5 text-[10px] font-mono tracking-widest text-amber-400 bg-black/75 select-none overflow-hidden">
           <div className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-bulb-odd shadow-sm shadow-amber-400" />
             <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-bulb-even shadow-sm shadow-red-500" />
-            <span className="font-extrabold text-white">NOW SHOWING</span>
-            <span className="hidden sm:inline text-gray-400">• SCREEN 1: 35MM STEREO DOLBY</span>
+            <span className="font-extrabold text-white">NOW SCREENING</span>
+            <span className="hidden sm:inline text-gray-400">• AUDITORIUM 1: 35MM STEREO DOLBY</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Clapperboard Take Counter */}
-            <button
-              onClick={snapHeaderClapper}
-              className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded border transition-transform ${
-                isClappingHeader ? "scale-95" : ""
-              } ${
-                isMatrix
-                  ? "border-[#00FF41]/40 bg-[#00FF41]/10 text-[#00FF41]"
-                  : "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-              }`}
-              title="Click to snap the Director's Clapperboard!"
-            >
-              <Clapperboard className="h-3 w-3 text-amber-400" />
-              <span>TAKE {headerTakes.toString().padStart(2, "0")}</span>
-            </button>
-
-            {/* Secret Easter Egg Vault Trigger & Discovery Counter */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Interactive Treasure Hunt Button (Accessible on Mobile & Desktop!) */}
             <button
               onClick={() => setIsVaultOpen(true)}
-              className={`flex items-center gap-1.5 px-3 py-0.5 rounded-full border transition font-mono font-bold ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full border transition font-mono font-bold text-[11px] ${
                 unlockedIds.length > 0
-                  ? "border-amber-400/80 bg-amber-400/15 text-amber-300 shadow-md shadow-amber-400/20"
-                  : "border-white/10 bg-white/5 text-gray-400 hover:text-white"
+                  ? "border-amber-400 bg-amber-400/20 text-amber-300 shadow-md shadow-amber-400/30 animate-pulse"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
               }`}
-              title="View secret cinema easter egg vault"
+              title="Open Easter Egg Treasure Hunt to solve film clues"
             >
-              <Trophy className="h-3 w-3 text-amber-400" />
-              <span>
-                VAULT: {unlockedIds.length}/5 FOUND
-              </span>
+              <Trophy className="h-3.5 w-3.5 text-amber-400" />
+              <span>TREASURE HUNT: {unlockedIds.length}/5</span>
             </button>
           </div>
         </div>
 
         {/* Main Cinema Navigation Bar */}
-        <div className="flex items-center justify-between px-6 py-4 lg:px-12">
+        <div className="flex items-center justify-between px-5 py-3.5 lg:px-12">
           {/* Logo & Cinema Branding */}
           <div className="flex items-center gap-3.5">
             <div
-              className={`group flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-500 shadow-xl ${
+              className={`group flex h-11 w-11 items-center justify-center rounded-2xl border transition-all duration-500 shadow-xl ${
                 isMatrix
                   ? "border-[#00FF41] bg-[#00FF41]/20 text-[#00FF41] shadow-[#00FF41]/30"
                   : isInterstellar
                   ? "border-amber-400 bg-amber-400/20 text-amber-300 shadow-amber-400/30"
-                  : "border-amber-500/40 bg-gradient-to-br from-red-600 to-amber-600 text-white shadow-red-700/40"
+                  : "border-amber-500/40 bg-gradient-to-br from-red-600 via-rose-600 to-amber-600 text-white shadow-red-700/40"
               }`}
             >
-              <Film className="h-6 w-6 spin-reel" />
+              <Film className="h-5 w-5 spin-reel" />
             </div>
 
             <div>
@@ -296,7 +324,7 @@ export default function Home() {
                       ? "font-mono text-[#00FF41] matrix-text-glow"
                       : isInterstellar
                       ? "font-mono text-amber-300"
-                      : "text-white drop-shadow-[0_2px_10px_rgba(229,9,20,0.5)]"
+                      : "text-white font-cinzel drop-shadow-[0_2px_10px_rgba(229,9,20,0.5)]"
                   }`}
                 >
                   CineBot
@@ -322,17 +350,17 @@ export default function Home() {
                     : "text-gray-400"
                 }`}
               >
-                Conversational Cinema Sommelier • Powered by LiveKit
+                Conversational Cinema Sommelier &bull; Powered by LiveKit
               </p>
             </div>
           </div>
 
           {/* Right Navigation & Status Stubs */}
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-3">
             {/* Vintage Ticket Stub (Interactive Easter Egg) */}
             <div
               onClick={() => setIsVipStamped((prev) => !prev)}
-              className={`hidden sm:flex relative cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 transition select-none ${
+              className={`hidden md:flex relative cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-2 transition select-none ${
                 isVipStamped
                   ? "border-amber-400 bg-amber-400/20 text-amber-300 shadow-xl shadow-amber-400/20"
                   : "border-[#252f44] bg-[#0c1018] text-gray-300 hover:border-amber-500/50"
@@ -345,12 +373,12 @@ export default function Home() {
                   {isVipStamped ? "VIP CRITIC PASS ★" : "ADMIT ONE // ROW C"}
                 </span>
                 <span className="text-[9px] text-gray-500 font-mono mt-0.5">
-                  SEAT 14 &bull; LIVEKIT
+                  SEAT 14 &bull; LIVE WEBRTC
                 </span>
               </div>
             </div>
 
-            {/* Fair Usage Modal Button */}
+            {/* Fair Usage Policy */}
             <button
               onClick={() => setIsFairUsageOpen(true)}
               className="flex items-center gap-1.5 rounded-xl border border-[#252f44] bg-[#0c1018] px-3.5 py-2 text-xs font-medium text-gray-300 hover:text-white hover:border-red-500/40 transition"
@@ -371,7 +399,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Theater Stage */}
+      {/* Main Stage */}
       <div className="relative z-10 flex flex-1 flex-col px-4 sm:px-6 py-8 lg:px-12 max-w-7xl mx-auto w-full">
         {token && serverUrl ? (
           <VoiceRoom
@@ -381,240 +409,150 @@ export default function Home() {
             onDisconnect={handleDisconnect}
           />
         ) : (
-          <div className="flex flex-col items-center justify-center flex-1 my-auto text-center space-y-10 py-10">
-            {/* Cinema Stage Header Marquee Badge */}
-            <div
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-mono font-bold tracking-wider ${
-                isMatrix
-                  ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41] matrix-box-glow"
-                  : isInterstellar
-                  ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
-                  : "border-amber-500/30 bg-amber-500/10 text-amber-300 shadow-lg shadow-amber-500/10"
-              }`}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>
-                {isMatrix
-                  ? "NEO // LIVE VOICE INTERACTION"
-                  : isInterstellar
-                  ? "GARGANTUA // REAL-TIME CONVERSATIONAL LINK"
-                  : "PREMIERE: REAL-TIME CONVERSATIONAL CINEMA"}
-              </span>
-            </div>
+          <div className="flex flex-col items-center justify-center space-y-12 py-6">
+            {/* The Centerpiece: Physical Golden Admission Ticket Stub */}
+            <div className="relative w-full max-w-2xl rounded-3xl border border-amber-500/50 bg-gradient-to-b from-[#181c26] via-[#10141d] to-[#0a0d14] p-6 sm:p-9 shadow-2xl shadow-black/95 overflow-hidden">
+              {/* Ticket Jagged Perforations along borders */}
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-[#06070a] border-b border-amber-500/40" />
+              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-[#06070a] border-t border-amber-500/40" />
 
-            {/* Cinema Title Heading */}
-            <div className="space-y-4 max-w-3xl">
-              <h2
-                className={`text-4xl font-black tracking-tight sm:text-6xl ${
-                  isMatrix
-                    ? "font-mono text-[#00FF41] matrix-text-glow uppercase"
-                    : isInterstellar
-                    ? "font-mono text-amber-300 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]"
-                    : "text-white"
-                }`}
-              >
-                {isMatrix ? (
-                  <>
-                    WAKE UP, MOVIE LOVER. <br />
-                    <span className="text-white">THE MATRIX HAS YOU.</span>
-                  </>
-                ) : isInterstellar ? (
-                  <>
-                    LOVE TRANSCENDS DIMENSIONS. <br />
-                    <span className="text-white">FIND YOUR NEXT MASTERPIECE.</span>
-                  </>
-                ) : (
-                  <>
-                    Step inside the theater. <br />
-                    <span className="bg-gradient-to-r from-red-500 via-amber-400 to-yellow-300 bg-clip-text text-transparent drop-shadow-sm">
-                      Talk to your personal Sommelier.
+              <div className="flex flex-col items-center text-center space-y-6">
+                {/* Header Ticket Badge */}
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-xs font-mono font-bold tracking-wider text-amber-300">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>★ CINEBOT GRAND PREMIERE ENGAGEMENT ★</span>
+                </div>
+
+                {/* Ticket Title */}
+                <div className="space-y-3">
+                  <h2 className="text-3xl sm:text-5xl font-black text-white font-cinzel tracking-tight leading-tight">
+                    Step inside the auditorium. <br />
+                    <span className="bg-gradient-to-r from-red-500 via-amber-400 to-yellow-300 bg-clip-text text-transparent">
+                      Converse with your AI Sommelier.
                     </span>
-                  </>
+                  </h2>
+                  <p className="text-sm sm:text-base text-gray-300 max-w-xl mx-auto leading-relaxed">
+                    No endless scrolling. No text walls. Speak freely for genres, actors, or follow-ups like{" "}
+                    <span className="italic font-bold text-white">&ldquo;Who directed the second one?&rdquo;</span> or{" "}
+                    <span className="italic font-bold text-white">&ldquo;Compare the first two&rdquo;</span>.
+                    Movie posters and streaming options project onto your screen live as CineBot speaks.
+                  </p>
+                </div>
+
+                {/* Error Banner */}
+                {error && (
+                  <div className="w-full rounded-2xl border border-red-500/50 bg-red-500/10 p-4 text-xs text-red-300 flex items-start gap-3 text-left">
+                    <ShieldCheck className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                    <p className="text-red-300/90 leading-relaxed">{error}</p>
+                  </div>
                 )}
-              </h2>
-              <p
-                className={`text-base sm:text-lg max-w-2xl mx-auto leading-relaxed ${
-                  isMatrix
-                    ? "font-mono text-emerald-300/90"
-                    : isInterstellar
-                    ? "font-mono text-amber-100/90"
-                    : "text-gray-300"
-                }`}
-              >
-                No endless scrolling. No text walls. Ask for mood, eras, actors, or follow-ups like{" "}
-                <span className="italic font-bold text-white">&ldquo;Who directed the second one?&rdquo;</span> or{" "}
-                <span className="italic font-bold text-white">&ldquo;Compare the first two&rdquo;</span>.
-                Posters and streaming options project onto your screen live as CineBot speaks.
-              </p>
+
+                {/* Main Action Ticket Punch Button */}
+                <div className="flex flex-col items-center gap-3 pt-2 w-full max-w-md">
+                  <button
+                    onClick={startVoiceChat}
+                    disabled={isConnecting}
+                    className="w-full group relative inline-flex items-center justify-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 px-8 py-4.5 text-base font-black tracking-wide text-white shadow-2xl shadow-red-600/40 hover:brightness-110 active:scale-95 transition-all duration-300 disabled:opacity-50"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 group-hover:scale-110 transition">
+                      <Mic className="h-5 w-5 fill-current" />
+                    </div>
+                    <span>
+                      {isConnecting
+                        ? "CONNECTING TO SOUNDSTAGE..."
+                        : "PUNCH TICKET & ENTER AUDITORIUM"}
+                    </span>
+                  </button>
+
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-gray-400">
+                    <span>10-min session cap</span>
+                    <span>&bull;</span>
+                    <span>6 sessions/15m</span>
+                    <span>&bull;</span>
+                    <button
+                      onClick={() => setIsFairUsageOpen(true)}
+                      className="underline hover:text-white transition"
+                    >
+                      Fair Usage Policy
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mobile Treasure Hunt Callout Banner */}
+                <div className="w-full pt-2">
+                  <button
+                    onClick={() => setIsVaultOpen(true)}
+                    className="w-full flex items-center justify-between p-3.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/15 transition text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/20 text-amber-300 border border-amber-400/40 shrink-0">
+                        <Trophy className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <span>Cinema Treasure Hunt</span>
+                          <span className="rounded-full bg-amber-400/20 px-2 py-0.2 text-[10px] text-amber-300 font-mono">
+                            {unlockedIds.length}/5 Discovered
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-400">
+                          Solve 5 film riddles (Matrix, Interstellar, &amp; more) to unlock secret themes!
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-amber-300 shrink-0">HUNT &rarr;</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Error Banner */}
-            {error && (
-              <div className="w-full max-w-lg rounded-2xl border border-red-500/50 bg-red-500/10 p-4 text-xs text-red-300 flex items-start gap-3 text-left shadow-lg shadow-red-500/10 animate-fade-in">
-                <ShieldCheck className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-white">Notice</p>
-                  <p className="mt-0.5 text-red-300/90 leading-relaxed">{error}</p>
+            {/* 2. Sommelier's Curated Showcase Reel (Screen is NEVER empty!) */}
+            <div className="w-full space-y-6 pt-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-400">
+                    <Film className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-white font-cinzel">
+                      Sommelier&apos;s Featured Showcase
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      Explore trending masterpieces or start a voice session above to tailor picks to your taste!
+                    </p>
+                  </div>
                 </div>
               </div>
-            )}
 
-            {/* Main Cinema CTA Button */}
-            <div className="flex flex-col items-center gap-3">
-              <button
-                onClick={startVoiceChat}
-                disabled={isConnecting}
-                className={`group relative inline-flex items-center gap-3.5 overflow-hidden rounded-2xl px-8 py-4.5 text-base font-black tracking-wide shadow-2xl active:scale-95 transition-all duration-300 disabled:opacity-50 ${
-                  isMatrix
-                    ? "bg-[#00FF41] text-black hover:bg-[#00cc33] shadow-[#00FF41]/40 font-mono"
-                    : isInterstellar
-                    ? "bg-amber-400 text-black hover:bg-amber-300 shadow-amber-400/40 font-mono"
-                    : "bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white shadow-red-600/40 hover:brightness-110"
-                }`}
-              >
-                <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl transition ${
-                    isMatrix ? "bg-black/20" : "bg-white/20 group-hover:scale-110"
-                  }`}
-                >
-                  <Mic className="h-5 w-5 fill-current" />
-                </div>
-                <span>
-                  {isConnecting
-                    ? isMatrix
-                      ? "JACKING INTO LIVEKIT ROOM..."
-                      : "Connecting to Theater Soundstage..."
-                    : isMatrix
-                    ? "ENTER THE CONSTRUCT"
-                    : "Start Voice Conversation"}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setIsFairUsageOpen(true)}
-                className={`text-[11px] underline underline-offset-4 transition ${
-                  isMatrix
-                    ? "font-mono text-emerald-400/80 hover:text-[#00FF41]"
-                    : "text-gray-400 hover:text-gray-200"
-                }`}
-              >
-                10-min session cap • 6 sessions/15m • Fair Usage Policy
-              </button>
-            </div>
-
-            {/* Interactive Cinema Feature Stalls */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-10 max-w-4xl w-full text-left">
-              <div
-                className={`rounded-2xl border p-6 transition-all duration-300 ${
-                  isMatrix
-                    ? "border-[#00FF41]/30 bg-[#051309]/80"
-                    : isInterstellar
-                    ? "border-amber-500/30 bg-[#070b16]/80"
-                    : "border-[#1e2738] bg-gradient-to-b from-[#111724]/80 to-[#090d14]/90 shadow-xl"
-                }`}
-              >
-                <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl mb-4 border ${
-                    isMatrix
-                      ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41]"
-                      : isInterstellar
-                      ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
-                      : "border-red-500/30 bg-red-600/10 text-red-400"
-                  }`}
-                >
-                  <Zap className="h-5 w-5" />
-                </div>
-                <h3
-                  className={`text-base font-extrabold ${
-                    isMatrix ? "font-mono text-[#00FF41]" : "text-white"
-                  }`}
-                >
-                  Sub-300ms Conversational Voice
-                </h3>
-                <p
-                  className={`mt-1.5 text-xs leading-relaxed ${
-                    isMatrix ? "font-mono text-emerald-300/80" : "text-gray-400"
-                  }`}
-                >
-                  Full-duplex WebRTC via LiveKit Agents, Groq LLM reasoning, and Deepgram Nova-3 voice synthesis with natural cutscene skipping.
-                </p>
-              </div>
-
-              <div
-                className={`rounded-2xl border p-6 transition-all duration-300 ${
-                  isMatrix
-                    ? "border-[#00FF41]/30 bg-[#051309]/80"
-                    : isInterstellar
-                    ? "border-amber-500/30 bg-[#070b16]/80"
-                    : "border-[#1e2738] bg-gradient-to-b from-[#111724]/80 to-[#090d14]/90 shadow-xl"
-                }`}
-              >
-                <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl mb-4 border ${
-                    isMatrix
-                      ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41]"
-                      : isInterstellar
-                      ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
-                      : "border-amber-500/30 bg-amber-500/10 text-amber-400"
-                  }`}
-                >
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <h3
-                  className={`text-base font-extrabold ${
-                    isMatrix ? "font-mono text-[#00FF41]" : "text-white"
-                  }`}
-                >
-                  Referential Follow-Ups
-                </h3>
-                <p
-                  className={`mt-1.5 text-xs leading-relaxed ${
-                    isMatrix ? "font-mono text-emerald-300/80" : "text-gray-400"
-                  }`}
-                >
-                  Ask &ldquo;Who directed the first one?&rdquo;, &ldquo;Which is scarier?&rdquo;, or &ldquo;Compare the two&rdquo; with grounded in-memory awareness.
-                </p>
-              </div>
-
-              <div
-                className={`rounded-2xl border p-6 transition-all duration-300 ${
-                  isMatrix
-                    ? "border-[#00FF41]/30 bg-[#051309]/80"
-                    : isInterstellar
-                    ? "border-amber-500/30 bg-[#070b16]/80"
-                    : "border-[#1e2738] bg-gradient-to-b from-[#111724]/80 to-[#090d14]/90 shadow-xl"
-                }`}
-              >
-                <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl mb-4 border ${
-                    isMatrix
-                      ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41]"
-                      : isInterstellar
-                      ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
-                      : "border-cyan-500/30 bg-cyan-500/10 text-cyan-400"
-                  }`}
-                >
-                  <Tv className="h-5 w-5" />
-                </div>
-                <h3
-                  className={`text-base font-extrabold ${
-                    isMatrix ? "font-mono text-[#00FF41]" : "text-white"
-                  }`}
-                >
-                  Trailers &amp; Streaming Sync
-                </h3>
-                <p
-                  className={`mt-1.5 text-xs leading-relaxed ${
-                    isMatrix ? "font-mono text-emerald-300/80" : "text-gray-400"
-                  }`}
-                >
-                  Integrated with TMDB to synchronize official YouTube trailers and streaming providers (Netflix, Prime, Disney+) live on screen.
-                </p>
+              {/* Showcase Movie Cards Grid */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                {PREMIERE_SHOWCASE.map((movie, idx) => (
+                  <MovieCard
+                    key={movie.id}
+                    movie={movie}
+                    index={idx}
+                    activeTheme={activeTheme}
+                    onWatchTrailer={handleWatchTrailer}
+                    onCheckProviders={handleCheckProviders}
+                  />
+                ))}
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Trailer & Streaming Modals */}
+      <TrailerModal
+        youtubeKey={activeTrailer?.key || null}
+        movieTitle={activeTrailer?.title || ""}
+        onClose={() => setActiveTrailer(null)}
+      />
+
+      <StreamingModal
+        movie={activeDetails}
+        onClose={() => setActiveDetails(null)}
+      />
 
       {/* Vintage Cinema Footer with 35mm Sprocket Perforations */}
       <footer
@@ -639,10 +577,10 @@ export default function Home() {
         <span className="hidden sm:inline">&bull;</span>
         <button
           onClick={() => setIsVaultOpen(true)}
-          className="hover:text-amber-300 transition flex items-center gap-1 font-mono"
+          className="hover:text-amber-300 transition flex items-center gap-1 font-mono font-bold text-amber-400"
         >
-          <Trophy className="h-3 w-3 text-amber-400" />
-          <span>Secret Vault ({unlockedIds.length}/5)</span>
+          <Trophy className="h-3.5 w-3.5" />
+          <span>Treasure Hunt ({unlockedIds.length}/5)</span>
         </button>
       </footer>
     </main>

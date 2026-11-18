@@ -21,8 +21,10 @@ import {
   FastForward,
   Clapperboard,
   Tv,
+  HelpCircle,
 } from "lucide-react";
 import { MovieItem, MovieDetails, MovieDataEvent } from "@/types/movie";
+import { PREMIERE_SHOWCASE } from "@/data/premiereMovies";
 import { MovieGrid } from "./MovieGrid";
 import { TrailerModal } from "./TrailerModal";
 import { StreamingModal } from "./StreamingModal";
@@ -104,24 +106,14 @@ function VoiceRoomContent({
   const isMatrix = activeTheme === "matrix";
   const isInterstellar = activeTheme === "interstellar";
   const isFightClub = activeTheme === "fightclub";
-  const isGodfather = activeTheme === "godfather";
 
   const [isMicOn, setIsMicOn] = useState<boolean>(true);
-  const [movies, setMovies] = useState<MovieItem[]>([]);
-  const [gridTitle, setGridTitle] = useState<string>("Now Showing");
+  // Screen is NEVER dark! Pre-populated with Sommelier's Showcase
+  const [movies, setMovies] = useState<MovieItem[]>(PREMIERE_SHOWCASE);
+  const [gridTitle, setGridTitle] = useState<string>("Sommelier's Curated Showcase");
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   const [typedMessage, setTypedMessage] = useState<string>("");
   const [isSearchingText, setIsSearchingText] = useState<boolean>(false);
-
-  // Easter Egg: Clapperboard Take counter
-  const [takeCount, setTakeCount] = useState<number>(1);
-  const [isClapping, setIsClapping] = useState<boolean>(false);
-
-  const handleClapSnap = () => {
-    setIsClapping(true);
-    setTakeCount((prev) => prev + 1);
-    setTimeout(() => setIsClapping(false), 300);
-  };
 
   // Sync hardware microphone status
   useEffect(() => {
@@ -170,10 +162,9 @@ function VoiceRoomContent({
   const [activeTrailer, setActiveTrailer] = useState<{ key: string; title: string } | null>(null);
   const [activeDetails, setActiveDetails] = useState<MovieDetails | null>(null);
 
-  // Send typed text message to agent via data channel
-  const handleSendTextMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const text = typedMessage.trim();
+  // Send message helper
+  const sendMessage = async (textToSend: string) => {
+    const text = textToSend.trim();
     if (!text || !room) return;
 
     setIsSearchingText(true);
@@ -204,6 +195,11 @@ function VoiceRoomContent({
       console.error("Failed to publish text message to agent:", err);
       setIsSearchingText(false);
     }
+  };
+
+  const handleSendTextMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    sendMessage(typedMessage);
   };
 
   // Listen to WebRTC Data Channel & Live Transcriptions
@@ -376,8 +372,8 @@ function VoiceRoomContent({
           ? "NEO // COMPUTING RECOMMENDATIONS..."
           : isInterstellar
           ? "COOPER // CALCULATING TRAJECTORY..."
-          : "CineBot is searching & thinking...",
-        color: isMatrix ? "bg-[#00FF41]" : isInterstellar ? "bg-amber-400" : "bg-amber-400",
+          : "CineBot is searching the archive...",
+        color: isMatrix ? "bg-[#00FF41]" : "bg-amber-400",
         ping: true,
       };
     }
@@ -404,8 +400,8 @@ function VoiceRoomContent({
     if (!isMicOn) {
       return {
         text: isMatrix
-          ? "AUDIO INPUT TERMINATED // TYPE BELOW"
-          : "Mic Off • Type your request below",
+          ? "AUDIO INPUT OFF // TYPE BELOW"
+          : "Microphone Muted • Type request below",
         color: "bg-gray-500",
         ping: false,
       };
@@ -413,17 +409,17 @@ function VoiceRoomContent({
     if (agentState === "listening") {
       return {
         text: isMatrix
-          ? "AUDIO LINK OPEN // SPEAK FREELY"
+          ? "AUDIO LINK LIVE // SPEAK FREELY"
           : isInterstellar
           ? "COMM LINK ACTIVE // SPEAK FREELY"
-          : "Microphone Live • Speak naturally",
+          : "Listening to you... Speak naturally",
         color: isMatrix ? "bg-[#00FF41]" : isInterstellar ? "bg-amber-400" : "bg-emerald-500",
         ping: true,
       };
     }
     return {
       text: isMatrix
-        ? "READY // STANDBY"
+        ? "OPERATOR READY // STANDBY"
         : "Soundstage Ready • Ask anything",
       color: isMatrix ? "bg-[#00FF41]" : "bg-emerald-400",
       ping: false,
@@ -433,306 +429,255 @@ function VoiceRoomContent({
   const status = getAgentStatusBadge();
 
   return (
-    <div className="flex flex-col flex-1 space-y-8 animate-fade-in">
-      {/* Authentic Cinema Projection Stage & Console */}
+    <div className="flex flex-col flex-1 space-y-8 animate-fade-in pb-12">
+      {/* 1. TOP: The Movie Projection Stage (Screen 1 Auditorium) */}
+      <div className="relative">
+        <MovieGrid
+          movies={movies}
+          title={gridTitle}
+          activeTheme={activeTheme}
+          onWatchTrailer={handleWatchTrailer}
+          onCheckProviders={handleCheckProviders}
+        />
+      </div>
+
+      {/* 2. BOTTOM: Director's Soundstage & Voice Control Deck */}
       <div
-        className={`relative overflow-hidden rounded-3xl border transition-all duration-500 cinema-screen-curve ${
+        className={`relative overflow-hidden rounded-3xl border transition-all duration-500 shadow-2xl p-5 sm:p-7 ${
           isMatrix
             ? "border-[#00FF41]/40 bg-[#051309]/95 matrix-box-glow"
             : isInterstellar
-            ? "border-amber-500/40 bg-[#070b16]/95 shadow-amber-500/10"
-            : isFightClub
-            ? "border-pink-500/40 bg-[#140a12]/95"
-            : "border-[#1e2738] bg-gradient-to-b from-[#111724] via-[#0b0f17] to-[#07090e]"
+            ? "border-amber-500/40 bg-[#080d1a]/95 shadow-amber-500/10"
+            : "border-[#1e2738] bg-gradient-to-b from-[#111726] via-[#0b0e17] to-[#07090e] shadow-black/90"
         }`}
       >
-        {/* Top Diagonal Clapperboard Zebra Bar */}
-        <div
-          onClick={handleClapSnap}
-          className={`h-7 w-full cursor-pointer relative flex items-center justify-between px-4 transition-transform duration-200 select-none ${
-            isClapping ? "scale-y-95 -translate-y-0.5" : ""
-          } ${isMatrix ? "clapper-stripes-matrix" : "clapper-stripes"}`}
-          title="Click to snap the Director's Clapperboard!"
-        >
-          <div className="flex items-center gap-2 bg-black/90 px-2.5 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider text-white shadow">
-            <Clapperboard className="h-3 w-3 text-amber-400" />
-            <span>
-              {isMatrix ? "MATRIX // TAKE" : isInterstellar ? "MISSION // TAKE" : "SCENE 1 // TAKE"}{" "}
-              {takeCount.toString().padStart(2, "0")}
-            </span>
+        {/* Console Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-white/10 gap-4">
+          <div className="flex items-center gap-3.5">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-300 shadow-xl shrink-0 ${
+                isMatrix
+                  ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41] shadow-[#00FF41]/20"
+                  : isInterstellar
+                  ? "border-amber-400/50 bg-amber-400/10 text-amber-300 shadow-amber-400/20"
+                  : "border-amber-500/30 bg-gradient-to-br from-red-600/20 to-amber-600/10 text-amber-400 shadow-red-900/30"
+              }`}
+            >
+              <Film className="h-6 w-6" />
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <h3
+                  className={`text-lg font-black tracking-tight ${
+                    isMatrix
+                      ? "font-mono text-[#00FF41] matrix-text-glow"
+                      : isInterstellar
+                      ? "font-mono text-amber-300"
+                      : "text-white font-cinzel"
+                  }`}
+                >
+                  CineBot Live Voice Deck
+                </h3>
+                <span
+                  className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold font-mono tracking-wider border ${
+                    isMatrix
+                      ? "border-[#00FF41]/40 bg-[#00FF41]/15 text-[#00FF41]"
+                      : isInterstellar
+                      ? "border-amber-400/40 bg-amber-400/15 text-amber-300"
+                      : "border-red-500/30 bg-red-600/15 text-red-400"
+                  }`}
+                >
+                  {isMatrix ? "OPERATOR" : "AI SOMMELIER"}
+                </span>
+              </div>
+              <p
+                className={`mt-1 flex items-center gap-2 text-xs font-medium ${
+                  isMatrix ? "font-mono text-emerald-300" : "text-gray-300"
+                }`}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full ${status.color} ${status.ping ? "animate-ping" : ""}`} />
+                {status.text}
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 bg-black/90 px-2.5 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider text-gray-300 shadow">
-            <span>SOUND: 48kHz OPUS</span>
-            <span className="hidden sm:inline">ROLL: 24 FPS</span>
+          {/* Soundstage Control Buttons */}
+          <div className="flex items-center gap-2.5 self-end sm:self-auto">
+            {agentState === "speaking" && (
+              <button
+                onClick={handleSkipSpeech}
+                className={`flex h-11 items-center gap-1.5 rounded-xl border px-3.5 text-xs font-bold active:scale-95 transition-all shadow-md animate-pulse ${
+                  isMatrix
+                    ? "border-[#00FF41]/50 bg-[#00FF41]/20 text-[#00FF41] hover:bg-[#00FF41] hover:text-black"
+                    : "border-amber-500/50 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                }`}
+                title="Skip current speech cutscene"
+              >
+                <FastForward className="h-4 w-4 fill-current" />
+                <span>SKIP SCENE</span>
+              </button>
+            )}
+
+            {/* Studio Microphone Toggle */}
+            <button
+              onClick={handleToggleMicrophone}
+              className={`relative flex h-11 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition-all duration-200 shadow-md ${
+                isMicOn
+                  ? isMatrix
+                    ? "border-[#00FF41] bg-[#00FF41]/20 text-[#00FF41]"
+                    : "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
+                  : "border-red-500/50 bg-red-600/15 text-red-400 hover:bg-red-600/25"
+              }`}
+              title={isMicOn ? "Turn off Microphone (Stop audio capture)" : "Turn on Microphone (Start audio capture)"}
+            >
+              {isMicOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+              <span>{isMicOn ? "MIC ON" : "MIC OFF"}</span>
+            </button>
+
+            {/* Leave Room Button */}
+            <button
+              onClick={onDisconnect}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-red-500/40 bg-red-600 hover:bg-red-700 px-3.5 text-xs font-bold text-white shadow-lg active:scale-95 transition"
+            >
+              <PhoneOff className="h-4 w-4" />
+              <span>EXIT THEATER</span>
+            </button>
           </div>
         </div>
 
-        {/* 35mm Sprocket Accent Line */}
-        <div
-          className={`h-2.5 w-full film-sprockets-h opacity-40 border-b ${
-            isMatrix ? "border-[#00FF41]/20 bg-[#001708]" : "border-white/5 bg-[#06080d]"
-          }`}
-        />
-
-        <div className="p-6 sm:p-8">
-          <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
-            {/* Clapperboard Identity & Live Status */}
-            <div className="flex items-center gap-4">
-              <div
-                onClick={handleClapSnap}
-                className={`cursor-pointer relative flex h-16 w-16 items-center justify-center rounded-2xl border transition-all duration-300 shadow-xl ${
-                  isMatrix
-                    ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41] shadow-[#00FF41]/30"
-                    : isInterstellar
-                    ? "border-amber-400/50 bg-amber-400/10 text-amber-300 shadow-amber-400/20"
-                    : isFightClub
-                    ? "border-pink-500/50 bg-pink-500/10 text-pink-400 shadow-pink-500/20"
-                    : "border-amber-500/30 bg-gradient-to-br from-red-600/20 to-amber-600/10 text-amber-400 shadow-red-900/30"
-                }`}
-                title="CineBot AI Sommelier • Click to snap take"
-              >
-                <Film className={`h-8 w-8 ${isClapping ? "scale-110" : ""}`} />
-                {status.ping && (
-                  <span className={`absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full ${status.color} animate-ping`} />
-                )}
-                <span className={`absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full ${status.color} border-2 border-black`} />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3
-                    className={`text-xl font-black tracking-tight ${
-                      isMatrix
-                        ? "font-mono text-[#00FF41] matrix-text-glow"
-                        : isInterstellar
-                        ? "font-mono text-amber-300"
-                        : "text-white"
-                    }`}
-                  >
-                    CineBot
-                  </h3>
-                  <span
-                    className={`rounded-md px-2.5 py-0.5 text-[10px] font-extrabold font-mono tracking-wider border ${
-                      isMatrix
-                        ? "border-[#00FF41]/40 bg-[#00FF41]/15 text-[#00FF41]"
-                        : isInterstellar
-                        ? "border-amber-400/40 bg-amber-400/15 text-amber-300"
-                        : isFightClub
-                        ? "border-pink-500/40 bg-pink-500/15 text-pink-300"
-                        : "border-red-500/30 bg-red-600/15 text-red-400"
-                    }`}
-                  >
-                    {isMatrix ? "OPERATOR" : isInterstellar ? "TESSERACT" : "CINEMA SOMMELIER"}
-                  </span>
-                </div>
-                <p
-                  className={`mt-1 flex items-center gap-2 text-xs sm:text-sm ${
-                    isMatrix ? "font-mono text-emerald-300" : "text-gray-300"
-                  }`}
-                >
-                  <span className={`h-2 w-2 rounded-full ${status.color}`} />
-                  {status.text}
-                </p>
-              </div>
-            </div>
-
-            {/* Optical Soundtrack VU Visualizer */}
-            <div className="flex flex-1 max-w-xs items-center justify-center px-4">
-              <div
-                className={`flex h-14 w-full items-center justify-center rounded-2xl border px-3 py-1.5 shadow-inner ${
-                  isMatrix
-                    ? "border-[#00FF41]/30 bg-black/80"
-                    : isInterstellar
-                    ? "border-amber-500/30 bg-black/80"
-                    : "border-[#1e2738] bg-[#07090f]/90"
-                }`}
-              >
-                {audioTrack ? (
-                  <BarVisualizer
-                    state={agentState}
-                    trackRef={audioTrack}
-                    barCount={17}
-                    className="h-10 w-full"
-                  />
-                ) : (
-                  <div
-                    className={`flex items-center gap-2 text-xs font-mono ${
-                      isMatrix
-                        ? "text-[#00FF41]/70"
-                        : isInterstellar
-                        ? "text-amber-400/70"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    <Volume2 className="h-4 w-4 animate-pulse" />
-                    <span>Optical audio track standby</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Vintage Studio Controls: Skip Cutscene, Microphone, Leave Room */}
-            <div className="flex items-center gap-3">
-              {agentState === "speaking" && (
-                <button
-                  onClick={handleSkipSpeech}
-                  className={`flex h-12 items-center gap-1.5 rounded-2xl border px-4 text-xs font-bold active:scale-95 transition-all shadow-lg animate-pulse ${
-                    isMatrix
-                      ? "border-[#00FF41]/50 bg-[#00FF41]/20 text-[#00FF41] hover:bg-[#00FF41] hover:text-black"
-                      : "border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 shadow-amber-500/20"
-                  }`}
-                  title="Skip speaking dialogue like a game cutscene"
-                >
-                  <FastForward className="h-4 w-4 fill-current" />
-                  <span>SKIP SCENE</span>
-                </button>
-              )}
-
-              {/* Studio Microphone Button */}
-              <button
-                onClick={handleToggleMicrophone}
-                className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200 shadow-lg ${
-                  isMicOn
-                    ? isMatrix
-                      ? "border-[#00FF41] bg-[#00FF41]/20 text-[#00FF41] shadow-[#00FF41]/30"
-                      : isInterstellar
-                      ? "border-amber-400 bg-amber-400/20 text-amber-300 shadow-amber-400/30"
-                      : "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 shadow-emerald-500/20"
-                    : "border-red-500/50 bg-red-600/15 text-red-400 hover:bg-red-600/25 shadow-red-500/20"
-                }`}
-                title={isMicOn ? "Turn off Microphone (Stop audio capture)" : "Turn on Microphone (Start audio capture)"}
-              >
-                {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-                {isMicOn && (
-                  <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                )}
-              </button>
-
-              {/* Leave Room Button */}
-              <button
-                onClick={onDisconnect}
-                className={`flex h-12 items-center gap-2 rounded-2xl border px-5 text-xs font-bold text-white shadow-lg active:scale-95 transition ${
-                  isMatrix
-                    ? "border-[#00FF41]/40 bg-[#003311] hover:bg-red-900/60"
-                    : "border-red-500/40 bg-red-600 hover:bg-red-700 shadow-red-600/30"
-                }`}
-              >
-                <PhoneOff className="h-4 w-4" />
-                <span>EXIT CINEMA</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Cinema Dialogue History Bar */}
-          {transcripts.length > 0 && (
-            <div
-              className={`mt-6 border-t pt-4 ${
-                isMatrix
-                  ? "border-[#00FF41]/20"
-                  : isInterstellar
-                  ? "border-amber-500/20"
-                  : "border-white/10"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-3 text-xs font-mono font-semibold text-gray-400">
-                <MessageSquare
-                  className={`h-3.5 w-3.5 ${
-                    isMatrix ? "text-[#00FF41]" : isInterstellar ? "text-amber-400" : "text-amber-400"
-                  }`}
-                />
-                <span>Cinema Dialogue &amp; Follow-Up Memory</span>
-              </div>
-              <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
-                {transcripts.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`flex items-start gap-2.5 text-xs animate-fade-in ${
-                      t.sender === "user"
-                        ? "text-gray-300"
-                        : isMatrix
-                        ? "text-[#00FF41] font-mono"
-                        : "text-amber-100"
-                    }`}
-                  >
-                    <span
-                      className={`mt-0.5 inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-mono font-bold shrink-0 ${
-                        t.sender === "user"
-                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                          : isMatrix
-                          ? "bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/40"
-                          : "bg-red-600/20 text-red-400 border border-red-500/30"
-                      }`}
-                    >
-                      {t.sender === "user" ? "YOU" : "BOT"}
-                    </span>
-                    <p className="leading-relaxed py-0.5 font-medium">
-                      <span className="font-semibold text-gray-400 mr-1.5 font-mono">
-                        {t.sender === "user" ? "You:" : "CineBot:"}
-                      </span>
-                      <FormattedTranscript text={t.text} activeTheme={activeTheme} />
-                      {!t.isFinal && (
-                        <span
-                          className={`inline-block w-1.5 h-1.5 ml-1 rounded-full animate-ping ${
-                            isMatrix ? "bg-[#00FF41]" : "bg-amber-400"
-                          }`}
-                        />
-                      )}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Screenplay Teleprompter Text Input */}
-          <form
-            onSubmit={handleSendTextMessage}
-            className={`mt-6 border-t pt-4 flex items-center gap-2 ${
-              isMatrix ? "border-[#00FF41]/20" : "border-white/10"
+        {/* Dynamic Optical Soundtrack VU Meter */}
+        <div className="py-4 flex items-center justify-center">
+          <div
+            className={`w-full max-w-md h-12 flex items-center justify-center rounded-2xl border px-4 shadow-inner ${
+              isMatrix
+                ? "border-[#00FF41]/30 bg-black/90"
+                : isInterstellar
+                ? "border-amber-500/30 bg-black/90"
+                : "border-[#1e2738] bg-[#07090f]/90"
             }`}
           >
-            <div className="relative flex-1">
-              <input
-                type="text"
-                value={typedMessage}
-                onChange={(e) => setTypedMessage(e.target.value)}
-                placeholder={
-                  isMatrix
-                    ? "Transmit query to Operator (e.g. 'Compare the first two films' or 'Who directed the second one?')..."
-                    : "Ask CineBot: 'Recommend 90s action thrillers', 'Who directed the second one?', or 'Compare the first two'..."
-                }
-                className={`w-full rounded-xl border px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none transition ${
-                  isMatrix
-                    ? "border-[#00FF41]/40 bg-black/90 font-mono text-[#00FF41] focus:border-[#00FF41] focus:ring-1 focus:ring-[#00FF41]"
-                    : "border-[#1e2738] bg-[#07090f]/90 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                }`}
+            {audioTrack ? (
+              <BarVisualizer
+                state={agentState}
+                trackRef={audioTrack}
+                barCount={21}
+                className="h-9 w-full"
               />
-            </div>
-            <button
-              type="submit"
-              disabled={!typedMessage.trim()}
-              className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold text-white transition disabled:opacity-40 ${
-                isMatrix
-                  ? "bg-[#00FF41] text-black hover:bg-[#00cc33] font-mono"
-                  : "bg-red-600 hover:bg-red-500 shadow-md shadow-red-600/30"
-              }`}
-            >
-              <Send className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">SEND</span>
-            </button>
-          </form>
+            ) : (
+              <div
+                className={`flex items-center gap-2 text-xs font-mono ${
+                  isMatrix
+                    ? "text-[#00FF41]/70"
+                    : isInterstellar
+                    ? "text-amber-400/70"
+                    : "text-gray-500"
+                }`}
+              >
+                <Volume2 className="h-4 w-4 animate-pulse" />
+                <span>35mm Optical Soundtrack Active &bull; Speak naturally</span>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Movie Recommendations Projection Grid */}
-      <MovieGrid
-        movies={movies}
-        title={gridTitle}
-        activeTheme={activeTheme}
-        onWatchTrailer={handleWatchTrailer}
-        onCheckProviders={handleCheckProviders}
-      />
+        {/* Subtitles & Dialogue Stream */}
+        {transcripts.length > 0 && (
+          <div className="border-t border-white/10 pt-4 mb-4">
+            <div className="flex items-center gap-2 mb-2.5 text-xs font-mono font-semibold text-gray-400">
+              <MessageSquare className="h-3.5 w-3.5 text-amber-400" />
+              <span>Cinema Subtitles &amp; Dialogue Memory</span>
+            </div>
+            <div className="max-h-36 overflow-y-auto space-y-2 pr-2">
+              {transcripts.map((t) => (
+                <div
+                  key={t.id}
+                  className={`flex items-start gap-2.5 text-xs animate-fade-in ${
+                    t.sender === "user"
+                      ? "text-gray-300"
+                      : isMatrix
+                      ? "text-[#00FF41] font-mono"
+                      : "text-amber-100"
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-mono font-bold shrink-0 ${
+                      t.sender === "user"
+                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                        : "bg-red-600/20 text-red-400 border border-red-500/30"
+                    }`}
+                  >
+                    {t.sender === "user" ? "YOU" : "BOT"}
+                  </span>
+                  <p className="leading-relaxed py-0.5 font-medium">
+                    <span className="font-semibold text-gray-400 mr-1.5 font-mono">
+                      {t.sender === "user" ? "You:" : "CineBot:"}
+                    </span>
+                    <FormattedTranscript text={t.text} activeTheme={activeTheme} />
+                    {!t.isFinal && (
+                      <span className="inline-block w-1.5 h-1.5 ml-1 rounded-full bg-amber-400 animate-ping" />
+                    )}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Quick Suggestion Chips */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 text-[11px] font-mono text-gray-400">
+          <span className="shrink-0 text-amber-400/80 font-bold">Try asking:</span>
+          <button
+            onClick={() => sendMessage("Recommend mind-bending 90s sci-fi movies")}
+            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-gray-300 hover:border-amber-400/50 hover:text-white transition"
+          >
+            &ldquo;Recommend 90s sci-fi thrillers&rdquo;
+          </button>
+          <button
+            onClick={() => sendMessage("Who directed the second movie?")}
+            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-gray-300 hover:border-amber-400/50 hover:text-white transition"
+          >
+            &ldquo;Who directed the second one?&rdquo;
+          </button>
+          <button
+            onClick={() => sendMessage("Compare the first two films on screen")}
+            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-gray-300 hover:border-amber-400/50 hover:text-white transition"
+          >
+            &ldquo;Compare #1 and #2&rdquo;
+          </button>
+          <button
+            onClick={() => sendMessage("What are the best Christopher Nolan movies?")}
+            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-gray-300 hover:border-amber-400/50 hover:text-white transition"
+          >
+            &ldquo;Find Christopher Nolan thrillers&rdquo;
+          </button>
+        </div>
+
+        {/* Screenplay Teleprompter Text Input */}
+        <form onSubmit={handleSendTextMessage} className="mt-3 flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={typedMessage}
+              onChange={(e) => setTypedMessage(e.target.value)}
+              placeholder="Prefer typing? Ask about vibe, actors, or follow-ups like 'Tell me more about #1'..."
+              className={`w-full rounded-xl border px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none transition ${
+                isMatrix
+                  ? "border-[#00FF41]/40 bg-black/90 font-mono text-[#00FF41] focus:border-[#00FF41]"
+                  : "border-[#1e2738] bg-[#07090f]/90 focus:border-amber-500"
+              }`}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!typedMessage.trim()}
+            className="flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2.5 text-xs font-bold text-white transition disabled:opacity-40 shadow-md shadow-red-600/30"
+          >
+            <Send className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">SEND</span>
+          </button>
+        </form>
+      </div>
 
       {/* Trailer & Streaming Modals */}
       <TrailerModal
