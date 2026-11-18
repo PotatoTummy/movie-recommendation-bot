@@ -1,6 +1,10 @@
 """
 TMDB (The Movie Database) API Client & Tools (Async via aiohttp with bulletproof urllib fallback)
 Provides movie search, genre-based discovery, trailer fetching, and streaming provider lookups.
+Features:
+- Single parallel request with append_to_response=videos,watch/providers
+- In-memory cache for details and providers
+- Region-aware provider lookup (defaults to India 'IN' with US fallback)
 """
 
 import asyncio
@@ -27,6 +31,9 @@ logger = logging.getLogger("tmdb-client")
 
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500"
+
+# In-memory LRU cache for movie details and providers: (movie_id, region) -> dict
+_DETAILS_CACHE: Dict[str, Dict[str, Any]] = {}
 
 BROWSER_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -98,104 +105,44 @@ async def _safe_get(url: str, params: Optional[Dict[str, Any]] = None) -> Dict[s
     """Fetch JSON from TMDB with aiohttp, falling back to urllib on connection reset or SSL error."""
     headers = _get_headers()
     all_params = _get_params(params)
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
 
-    connector = aiohttp.TCPConnector(ssl=ssl_context)
     try:
-        async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
-            async with session.get(url, params=all_params, timeout=aiohttp.ClientTimeout(total=6)) as resp:
+        timeout = aiohttp.ClientTimeout(total=8, connect=4)
+        ssl_ctx = ssl.create_default_context()
+        connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            async with session.get(url, headers=headers, params=all_params) as resp:
                 if resp.status == 200:
                     return await resp.json()
-                text = await resp.text()
-                logger.warning(f"TMDB request returned status {resp.status}: {text[:100]}")
-    except Exception as aio_err:
-        logger.warning(f"aiohttp request failed ({aio_err}), falling back to urllib: {url}")
-
-    # Fallback to threaded urllib
-    return await asyncio.to_thread(_sync_fetch, url, all_params, headers)
+                logger.warning(f"TMDB request returned status {resp.status} for {url}")
+                return {}
+    except Exception as e:
+        logger.warning(f"aiohttp GET failed ({e}), falling back to urllib for {url}")
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync_fetch, url, all_params, headers)
 
 
 async def search_movies(query: str, year: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Search for movies by title or query string."""
+    """Search TMDB for movies matching a text query."""
     try:
         url = f"{TMDB_BASE_URL}/search/movie"
-        params = {"query": query, "include_adult": "false", "page": "1"}
-        if year:
-            params["year"] = str(year)
-
-        data = await _safe_get(url, params)
-        results = data.get("results", [])
-
-        # If 0 results and multi-word query, try prominent keywords
-        if not results and len(query.split()) > 2:
-            cleaned_words = [
-                w for w in query.split()
-                if w.lower() not in {"movie", "movies", "film", "films", "the", "a", "an", "some", "good", "best", "top"}
-            ]
-            if cleaned_words:
-                short_query = " ".join(cleaned_words[:2])
-                fallback_data = await _safe_get(url, {"query": short_query, "include_adult": "false", "page": "1"})
-                results = fallback_data.get("results", [])
-
-        movies = []
-        for m in results[:5]:
-            poster_path = m.get("poster_path")
-            movies.append({
-                "id": m.get("id"),
-                "title": m.get("title"),
-                "overview": m.get("overview"),
-                "release_date": m.get("release_date"),
-                "rating": round(float(m.get("vote_average", 0)), 1),
-                "vote_count": m.get("vote_count"),
-                "poster_url": f"{TMDB_IMAGE_BASE_URL}{poster_path}" if poster_path else None,
-            })
-        return movies
-    except Exception as e:
-        logger.error(f"Error searching movies for '{query}': {e}")
-        return []
-
-
-async def discover_movies(
-    genre: Optional[str] = None,
-    year_gte: Optional[int] = None,
-    year_lte: Optional[int] = None,
-    min_rating: float = 6.5,
-    sort_by: str = "popularity.desc",
-) -> List[Dict[str, Any]]:
-    """Discover movies filtered by genre, release timeframe, and rating."""
-    try:
-        url = f"{TMDB_BASE_URL}/discover/movie"
         params: Dict[str, Any] = {
+            "query": query,
             "include_adult": "false",
-            "sort_by": sort_by,
-            "vote_count.gte": "100",
-            "vote_average.gte": str(min_rating),
+            "language": "en-US",
             "page": "1",
         }
-
-        if genre and genre.lower() in GENRE_MAP:
-            params["with_genres"] = str(GENRE_MAP[genre.lower()])
-
-        if year_gte:
-            params["primary_release_date.gte"] = f"{year_gte}-01-01"
-        if year_lte:
-            params["primary_release_date.lte"] = f"{year_lte}-12-31"
+        if year:
+            params["primary_release_year"] = str(year)
 
         data = await _safe_get(url, params)
         results = data.get("results", [])
 
-        # If 0 results and multi-word query, try prominent keywords
-        if not results and len(query.split()) > 2:
-            cleaned_words = [
-                w for w in query.split()
-                if w.lower() not in {"movie", "movies", "film", "films", "the", "a", "an", "some", "good", "best", "top"}
-            ]
-            if cleaned_words:
-                short_query = " ".join(cleaned_words[:2])
-                fallback_data = await _safe_get(url, {"query": short_query, "include_adult": "false", "page": "1"})
-                results = fallback_data.get("results", [])
+        # If zero results with year filter, retry without year
+        if not results and year:
+            params.pop("primary_release_year", None)
+            data = await _safe_get(url, params)
+            results = data.get("results", [])
 
         movies = []
         for m in results[:6]:
@@ -206,7 +153,58 @@ async def discover_movies(
                 "overview": m.get("overview"),
                 "release_date": m.get("release_date"),
                 "rating": round(float(m.get("vote_average", 0)), 1),
-                "vote_count": m.get("vote_count"),
+                "vote_count": m.get("vote_count", 0),
+                "poster_url": f"{TMDB_IMAGE_BASE_URL}{poster_path}" if poster_path else None,
+            })
+        return movies
+    except Exception as e:
+        logger.error(f"Error in search_movies for '{query}': {e}")
+        return []
+
+
+async def discover_movies(
+    genre: Optional[str] = None,
+    year_gte: Optional[int] = None,
+    year_lte: Optional[int] = None,
+    min_rating: float = 6.0,
+) -> List[Dict[str, Any]]:
+    """Discover movies on TMDB based on genres, release dates, and ratings."""
+    try:
+        url = f"{TMDB_BASE_URL}/discover/movie"
+        params: Dict[str, Any] = {
+            "include_adult": "false",
+            "include_video": "false",
+            "language": "en-US",
+            "page": "1",
+            "sort_by": "popularity.desc",
+            "vote_count.gte": "150",
+            "vote_average.gte": str(min_rating),
+        }
+
+        if genre:
+            clean_g = genre.lower().strip()
+            genre_id = GENRE_MAP.get(clean_g)
+            if genre_id:
+                params["with_genres"] = str(genre_id)
+
+        if year_gte:
+            params["primary_release_date.gte"] = f"{year_gte}-01-01"
+        if year_lte:
+            params["primary_release_date.lte"] = f"{year_lte}-12-31"
+
+        data = await _safe_get(url, params)
+        results = data.get("results", [])
+
+        movies = []
+        for m in results[:6]:
+            poster_path = m.get("poster_path")
+            movies.append({
+                "id": m.get("id"),
+                "title": m.get("title"),
+                "overview": m.get("overview"),
+                "release_date": m.get("release_date"),
+                "rating": round(float(m.get("vote_average", 0)), 1),
+                "vote_count": m.get("vote_count", 0),
                 "poster_url": f"{TMDB_IMAGE_BASE_URL}{poster_path}" if poster_path else None,
             })
         return movies
@@ -215,20 +213,28 @@ async def discover_movies(
         return []
 
 
-async def get_movie_details_and_extras(movie_id: int, region: str = "US") -> Dict[str, Any]:
-    """Fetch comprehensive details, YouTube trailer, and streaming providers for a movie."""
+async def get_movie_details_and_extras(movie_id: int, region: str = "IN") -> Dict[str, Any]:
+    """
+    Fetch comprehensive details, YouTube trailer, and streaming providers in a SINGLE TMDB call
+    using append_to_response=videos,watch/providers.
+    Cached in memory to eliminate duplicate round trips.
+    """
+    cache_key = f"{movie_id}_{region}"
+    if cache_key in _DETAILS_CACHE:
+        return _DETAILS_CACHE[cache_key]
+
     try:
-        # 1. Main details
-        details = await _safe_get(f"{TMDB_BASE_URL}/movie/{movie_id}")
+        # Single parallel call for details, trailers, and providers
+        data = await _safe_get(
+            f"{TMDB_BASE_URL}/movie/{movie_id}",
+            {"append_to_response": "videos,watch/providers"}
+        )
 
-        # 2. Videos / Trailers
-        videos_data = await _safe_get(f"{TMDB_BASE_URL}/movie/{movie_id}/videos")
-        videos = videos_data.get("results", [])
+        if not data or "id" not in data:
+            return {"id": movie_id, "error": "Movie not found"}
 
-        # 3. Watch Providers
-        providers_raw = await _safe_get(f"{TMDB_BASE_URL}/movie/{movie_id}/watch/providers")
-        providers_data = providers_raw.get("results", {}).get(region, {})
-
+        # Extract videos / trailers
+        videos = data.get("videos", {}).get("results", [])
         trailer_key = None
         for v in videos:
             if v.get("site") == "YouTube" and v.get("type") in ("Trailer", "Teaser"):
@@ -236,21 +242,25 @@ async def get_movie_details_and_extras(movie_id: int, region: str = "US") -> Dic
                 if v.get("type") == "Trailer":
                     break
 
+        # Extract region-aware providers (prefer requested region like 'IN', fallback to 'US')
+        all_providers = data.get("watch/providers", {}).get("results", {})
+        providers_data = all_providers.get(region) or all_providers.get("IN") or all_providers.get("US") or {}
+
         streaming = [p.get("provider_name") for p in providers_data.get("flatrate", [])]
         rent = [p.get("provider_name") for p in providers_data.get("rent", [])]
 
-        poster_path = details.get("poster_path")
-        backdrop_path = details.get("backdrop_path")
+        poster_path = data.get("poster_path")
+        backdrop_path = data.get("backdrop_path")
 
-        return {
+        result = {
             "id": movie_id,
-            "title": details.get("title"),
-            "tagline": details.get("tagline"),
-            "overview": details.get("overview"),
-            "runtime": details.get("runtime"),
-            "release_date": details.get("release_date"),
-            "rating": round(float(details.get("vote_average", 0)), 1),
-            "genres": [g.get("name") for g in details.get("genres", [])],
+            "title": data.get("title"),
+            "tagline": data.get("tagline"),
+            "overview": data.get("overview"),
+            "runtime": data.get("runtime"),
+            "release_date": data.get("release_date"),
+            "rating": round(float(data.get("vote_average", 0)), 1),
+            "genres": [g.get("name") for g in data.get("genres", [])],
             "poster_url": f"{TMDB_IMAGE_BASE_URL}{poster_path}" if poster_path else None,
             "backdrop_url": f"https://image.tmdb.org/t/p/w1280{backdrop_path}" if backdrop_path else None,
             "trailer_youtube_url": f"https://www.youtube.com/watch?v={trailer_key}" if trailer_key else None,
@@ -258,6 +268,10 @@ async def get_movie_details_and_extras(movie_id: int, region: str = "US") -> Dic
             "streaming_providers": streaming,
             "rent_providers": rent,
         }
+
+        # Cache result
+        _DETAILS_CACHE[cache_key] = result
+        return result
     except Exception as e:
         logger.error(f"Error fetching movie details for {movie_id}: {e}")
         return {"id": movie_id, "error": str(e)}

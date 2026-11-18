@@ -1,97 +1,70 @@
 "use client";
 
 import React from "react";
-import { Sparkles, Film } from "lucide-react";
 import { MovieItem } from "@/types/movie";
-import { PREMIERE_SHOWCASE } from "@/data/premiereMovies";
 import { MovieCard } from "./MovieCard";
 
 interface MovieGridProps {
   movies: MovieItem[];
   title?: string;
-  activeTheme?: string | null;
+  countLabel?: string;
   onWatchTrailer?: (movieId: number, title: string) => void;
   onCheckProviders?: (movieId: number) => void;
 }
 
 export function MovieGrid({
   movies,
-  title = "Now Showing",
-  activeTheme = null,
+  title = "On the shelf",
+  countLabel,
   onWatchTrailer,
   onCheckProviders,
 }: MovieGridProps) {
-  const isMatrix = activeTheme === "matrix";
-  const isInterstellar = activeTheme === "interstellar";
-  const isFightClub = activeTheme === "fightclub";
-
-  // If movies is somehow empty, display PREMIERE_SHOWCASE so screen is never dark!
-  const displayMovies = movies.length > 0 ? movies : PREMIERE_SHOWCASE;
-  const displayTitle = movies.length > 0 ? title : "Sommelier's Curated Showcase";
+  const countText =
+    countLabel ||
+    (movies.length > 0
+      ? `${movies.length} ${movies.length === 1 ? "film" : "films"}, in the order I mention them`
+      : "Nothing yet");
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* Curved Screen Marquee Header */}
-      <div className="flex items-center justify-between border-b border-white/10 pb-3">
-        <div className="flex items-center gap-3">
-          <div
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
-              isMatrix
-                ? "border-[#00FF41]/50 bg-[#00FF41]/20 text-[#00FF41]"
-                : isInterstellar
-                ? "border-amber-400/50 bg-amber-400/20 text-amber-400"
-                : isFightClub
-                ? "border-pink-500/50 bg-pink-500/20 text-pink-400"
-                : "border-amber-500/40 bg-amber-500/10 text-amber-400"
-            }`}
-          >
-            <Sparkles className="h-4 w-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2
-                className={`text-lg sm:text-xl font-extrabold tracking-wide ${
-                  isMatrix
-                    ? "font-mono text-[#00FF41] matrix-text-glow"
-                    : isInterstellar
-                    ? "font-mono text-amber-300"
-                    : "text-white font-cinzel"
-                }`}
-              >
-                {displayTitle}
-              </h2>
-              <span
-                className={`rounded-md px-2 py-0.5 text-xs font-mono font-bold border ${
-                  isMatrix
-                    ? "border-[#00FF41]/40 bg-[#00FF41]/15 text-[#00FF41]"
-                    : "border-white/10 bg-white/10 text-gray-300"
-                }`}
-              >
-                {displayMovies.length} REELS
-              </span>
-            </div>
-            <p className="text-xs text-gray-400">
-              {movies.length > 0
-                ? "Live recommendations projected from your conversational query."
-                : "Auditorium loaded with premiere selections. Speak or ask follow-ups anytime!"}
-            </p>
-          </div>
-        </div>
+    <section aria-label="Recommendations" className="w-full">
+      {/* Shelf Head */}
+      <div className="flex justify-between items-baseline mb-4 pb-2 border-b-2 border-[var(--ink)]">
+        <h2 className="font-display text-2xl sm:text-3xl uppercase tracking-wide">
+          {title}
+        </h2>
+        <span className="text-sm font-medium opacity-75">{countText}</span>
       </div>
 
-      {/* Auditorium Projection Grid */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-        {displayMovies.map((movie, idx) => (
-          <MovieCard
-            key={`${movie.id}-${idx}`}
-            movie={movie}
-            index={idx}
-            activeTheme={activeTheme}
-            onWatchTrailer={onWatchTrailer}
-            onCheckProviders={onCheckProviders}
-          />
-        ))}
-      </div>
-    </div>
+      {/* Shelf Items */}
+      {movies.length === 0 ? (
+        <div className="py-8">
+          <p className="max-w-[36ch] text-base leading-relaxed opacity-75">
+            Ask for a genre, an actor or a mood. Say &ldquo;the second one&rdquo; to dig into any film here.
+          </p>
+        </div>
+      ) : (
+        /* Responsive Shelf: Horizontal snap carousel on mobile, Grid on desktop */
+        <div
+          className="flex sm:grid sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-5 overflow-x-auto sm:overflow-visible pb-4 sm:pb-0 snap-x snap-mandatory"
+          tabIndex={0}
+          aria-label="Movie shelf"
+        >
+          {movies.map((movie, idx) => (
+            <div
+              key={`${movie.id}-${idx}`}
+              className="w-[160px] sm:w-auto shrink-0 snap-start"
+            >
+              <MovieCard
+                movie={movie}
+                index={idx}
+                delayMs={Math.min(idx * 200, 1000)}
+                onWatchTrailer={onWatchTrailer}
+                onCheckProviders={onCheckProviders}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

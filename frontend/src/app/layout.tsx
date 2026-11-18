@@ -1,9 +1,24 @@
 import type { Metadata } from "next";
+import { Big_Shoulders, Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
 
+const bigShoulders = Big_Shoulders({
+  subsets: ["latin"],
+  variable: "--font-big-shoulders",
+  weight: ["700", "900"],
+  display: "swap",
+});
+
+const hankenGrotesk = Hanken_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-hanken-grotesk",
+  weight: ["400", "500", "700"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "CineBot | LiveKit Voice Movie Sommelier",
-  description: "Real-time conversational AI movie recommendation assistant built with LiveKit WebRTC and TMDB",
+  title: "CineBot — ask for a film out loud",
+  description: "Talk to CineBot like a friend behind the video-store counter. Posters land on the shelf as it answers.",
 };
 
 export default function RootLayout({
@@ -12,13 +27,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body
-        className="min-h-screen bg-[#06070a] text-gray-100 antialiased selection:bg-amber-500/30 selection:text-amber-200"
-        suppressHydrationWarning
-      >
-        {children}
-      </body>
+    <html lang="en" className={`${bigShoulders.variable} ${hankenGrotesk.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }
