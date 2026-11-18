@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #08090d;
-  --foreground: #f2f2f2;
+  --background: #06070a;
+  --foreground: #f4f4f5;
 }
 
 body {
@@ -19,10 +19,10 @@ body {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0d14;
+  background: #07080d;
 }
 ::-webkit-scrollbar-thumb {
-  background: #232c3d;
+  background: #1f2737;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -31,7 +31,7 @@ body {
 
 /* Authentic 35mm Film Strip Sprocket Perforations */
 .film-sprockets-h {
-  background-image: radial-gradient(circle, #08090d 35%, transparent 40%);
+  background-image: radial-gradient(circle, #06070a 35%, transparent 40%);
   background-size: 20px 20px;
   background-repeat: repeat-x;
 }
@@ -40,8 +40,8 @@ body {
 .clapper-stripes {
   background: repeating-linear-gradient(
     -45deg,
-    #11141c,
-    #11141c 14px,
+    #0f121a,
+    #0f121a 14px,
     #f3f4f6 14px,
     #f3f4f6 28px
   );
@@ -50,30 +50,61 @@ body {
 .clapper-stripes-matrix {
   background: repeating-linear-gradient(
     -45deg,
-    #051c0d,
-    #051c0d 14px,
+    #031407,
+    #031407 14px,
     #00ff41 14px,
     #00ff41 28px
   );
 }
 
-/* Cinematic Projector Volumetric Light Cone */
+/* Curved Cinema Screen Perspective Display */
+.cinema-screen-curve {
+  box-shadow: 
+    0 25px 60px -15px rgba(0, 0, 0, 0.95),
+    0 0 50px rgba(245, 197, 24, 0.06),
+    inset 0 1px 2px rgba(255, 255, 255, 0.15);
+  background: radial-gradient(ellipse at 50% 0%, rgba(30, 41, 59, 0.5) 0%, rgba(9, 12, 18, 0.98) 75%);
+}
+
+/* Cinema Projector Volumetric Light Cone */
 .projector-beam {
-  background: radial-gradient(ellipse 60% 50% at 50% -20%, rgba(245, 197, 24, 0.12) 0%, rgba(229, 9, 20, 0.05) 40%, transparent 80%);
+  background: radial-gradient(ellipse 65% 55% at 50% -15%, rgba(245, 197, 24, 0.14) 0%, rgba(229, 9, 20, 0.05) 45%, transparent 80%);
 }
 
 .projector-beam-matrix {
-  background: radial-gradient(ellipse 60% 50% at 50% -20%, rgba(0, 255, 65, 0.18) 0%, rgba(3, 160, 98, 0.08) 45%, transparent 80%);
+  background: radial-gradient(ellipse 65% 55% at 50% -15%, rgba(0, 255, 65, 0.22) 0%, rgba(3, 160, 98, 0.08) 45%, transparent 80%);
+}
+
+.projector-beam-interstellar {
+  background: radial-gradient(ellipse 65% 55% at 50% -15%, rgba(245, 158, 11, 0.22) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 80%);
+}
+
+/* Star Wars 3D Perspective Crawl */
+@keyframes crawl {
+  0% {
+    top: 100%;
+    transform: rotateX(25deg) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    top: -240%;
+    transform: rotateX(25deg) translateY(-2600px);
+    opacity: 0;
+  }
+}
+
+.animate-crawl {
+  animation: crawl 55s linear infinite;
 }
 
 /* Marquee Bulb Glow Animation */
 @keyframes bulbPulse {
   0%, 100% {
-    opacity: 0.9;
+    opacity: 0.95;
     filter: drop-shadow(0 0 6px #f5c518);
   }
   50% {
-    opacity: 0.4;
+    opacity: 0.35;
     filter: drop-shadow(0 0 1px #f5c518);
   }
 }
@@ -101,7 +132,7 @@ body {
 }
 
 .spin-reel:hover {
-  animation-duration: 3s;
+  animation-duration: 2.5s;
 }
 
 /* Matrix Phosphor Terminal Glow */
@@ -110,5 +141,21 @@ body {
 }
 
 .matrix-box-glow {
-  box-shadow: 0 0 20px rgba(0, 255, 65, 0.25), inset 0 0 15px rgba(0, 255, 65, 0.1);
+  box-shadow: 0 0 25px rgba(0, 255, 65, 0.25), inset 0 0 15px rgba(0, 255, 65, 0.1);
+}
+
+/* Godfather Noir Sepia Filter */
+.theme-godfather {
+  filter: sepia(0.55) contrast(1.15) brightness(0.92);
+}
+
+/* Fight Club Film Flicker */
+@keyframes filmFlicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.95; }
+  75% { opacity: 0.98; }
+}
+
+.theme-fightclub {
+  animation: filmFlicker 0.2s infinite;
 }

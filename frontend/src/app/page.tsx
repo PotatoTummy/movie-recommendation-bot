@@ -10,13 +10,18 @@ import {
   Zap,
   Clapperboard,
   Ticket,
-  Flame,
-  CornerDownRight,
-  Eye,
+  Trophy,
+  Compass,
+  X,
 } from "lucide-react";
 import { VoiceRoom } from "@/components/VoiceRoom";
 import { FairUsageModal } from "@/components/FairUsageModal";
 import { MatrixRainCanvas } from "@/components/MatrixRainCanvas";
+import { InterstellarCanvas } from "@/components/InterstellarCanvas";
+import { StarWarsCrawl } from "@/components/StarWarsCrawl";
+import { EasterEggVaultModal } from "@/components/EasterEggVaultModal";
+import { EasterEggBanner } from "@/components/EasterEggBanner";
+import { EasterEgg, EASTER_EGGS } from "@/types/easterEggs";
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
@@ -25,21 +30,56 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isFairUsageOpen, setIsFairUsageOpen] = useState<boolean>(false);
 
-  // Easter Egg 1: The Matrix Theme
-  const [isMatrixMode, setIsMatrixMode] = useState<boolean>(false);
+  // Easter Egg System State
+  const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
+  const [activeTheme, setActiveTheme] = useState<string | null>(null);
+  const [isVaultOpen, setIsVaultOpen] = useState<boolean>(false);
+  const [newlyUnlockedEgg, setNewlyUnlockedEgg] = useState<EasterEgg | null>(null);
   const [keyBuffer, setKeyBuffer] = useState<string>("");
 
-  // Easter Egg 2: Clapperboard snap
+  // Clapperboard Take counter
   const [headerTakes, setHeaderTakes] = useState<number>(1);
   const [isClappingHeader, setIsClappingHeader] = useState<boolean>(false);
 
-  // Easter Egg 3: Secret VIP Ticket Stamp
+  // VIP Ticket Stamp Easter Egg
   const [isVipStamped, setIsVipStamped] = useState<boolean>(false);
 
-  // Secret keystroke listener for "matrix" or "neo"
+  // Load unlocked Easter Eggs from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("cinebot_unlocked_reels");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setUnlockedIds(parsed);
+        }
+      }
+    } catch (e) {
+      // Ignore storage errors
+    }
+  }, []);
+
+  // Unlock an Easter Egg & trigger celebration toast
+  const unlockEgg = (eggId: string) => {
+    const egg = EASTER_EGGS.find((e) => e.id === eggId);
+    if (!egg) return;
+
+    setActiveTheme(eggId);
+
+    setUnlockedIds((prev) => {
+      if (prev.includes(eggId)) return prev;
+      const updated = [...prev, eggId];
+      try {
+        localStorage.setItem("cinebot_unlocked_reels", JSON.stringify(updated));
+      } catch (e) {}
+      setNewlyUnlockedEgg(egg);
+      return updated;
+    });
+  };
+
+  // Global keystroke listener for secret cinema keywords
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input or textarea
       if (
         document.activeElement?.tagName === "INPUT" ||
         document.activeElement?.tagName === "TEXTAREA"
@@ -47,23 +87,28 @@ export default function Home() {
         return;
       }
 
-      if (e.key === "Escape" && isMatrixMode) {
-        setIsMatrixMode(false);
+      if (e.key === "Escape" && activeTheme) {
+        setActiveTheme(null);
         return;
       }
 
-      const updated = (keyBuffer + e.key.toLowerCase()).slice(-8);
+      const updated = (keyBuffer + e.key.toLowerCase()).slice(-10);
       setKeyBuffer(updated);
 
-      if (updated.includes("matrix") || updated.includes("neo")) {
-        setIsMatrixMode((prev) => !prev);
-        setKeyBuffer("");
+      for (const egg of EASTER_EGGS) {
+        for (const trigger of egg.triggerKey) {
+          if (updated.includes(trigger)) {
+            unlockEgg(egg.id);
+            setKeyBuffer("");
+            return;
+          }
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [keyBuffer, isMatrixMode]);
+  }, [keyBuffer, activeTheme]);
 
   const snapHeaderClapper = () => {
     setIsClappingHeader(true);
@@ -99,19 +144,41 @@ export default function Home() {
     setServerUrl(null);
   };
 
+  const isMatrix = activeTheme === "matrix";
+  const isInterstellar = activeTheme === "interstellar";
+  const isFightClub = activeTheme === "fightclub";
+  const isGodfather = activeTheme === "godfather";
+
   return (
     <main
-      className={`relative flex min-h-screen flex-col transition-colors duration-700 ${
-        isMatrixMode ? "bg-[#060a08] text-[#00FF41]" : "bg-[#08090d] text-gray-100"
+      className={`relative flex min-h-screen flex-col transition-colors duration-700 select-none ${
+        isMatrix
+          ? "bg-[#050a06] text-[#00FF41]"
+          : isInterstellar
+          ? "bg-[#04060c] text-amber-200"
+          : isGodfather
+          ? "bg-[#0e0b08] text-amber-100 theme-godfather"
+          : isFightClub
+          ? "bg-[#11070e] text-pink-300 theme-fightclub"
+          : "bg-[#06070a] text-gray-100"
       }`}
     >
-      {/* Matrix Cascading Digital Rain Background (Active in Matrix Easter Egg mode) */}
-      <MatrixRainCanvas active={isMatrixMode} />
+      {/* Easter Egg Dynamic Canvases */}
+      <MatrixRainCanvas active={isMatrix} />
+      <InterstellarCanvas active={isInterstellar} />
+      <StarWarsCrawl
+        active={activeTheme === "starwars"}
+        onClose={() => setActiveTheme(null)}
+      />
 
-      {/* Cinematic Projector Volumetric Light Cone */}
+      {/* Cinematic Projector Light Beam Cone */}
       <div
-        className={`pointer-events-none fixed inset-0 z-0 h-[600px] w-full transition-opacity duration-700 ${
-          isMatrixMode ? "projector-beam-matrix opacity-70" : "projector-beam opacity-90"
+        className={`pointer-events-none fixed inset-0 z-0 h-[650px] w-full transition-opacity duration-1000 ${
+          isMatrix
+            ? "projector-beam-matrix opacity-80"
+            : isInterstellar
+            ? "projector-beam-interstellar opacity-90"
+            : "projector-beam opacity-90"
         }`}
       />
 
@@ -121,99 +188,138 @@ export default function Home() {
         onClose={() => setIsFairUsageOpen(false)}
       />
 
-      {/* Retro Cinema Marquee Header */}
+      {/* Easter Egg Vault Modal */}
+      <EasterEggVaultModal
+        isOpen={isVaultOpen}
+        onClose={() => setIsVaultOpen(false)}
+        unlockedIds={unlockedIds}
+        activeTheme={activeTheme}
+        onSelectTheme={(id) => setActiveTheme(id)}
+      />
+
+      {/* Achievement Banner Toast when unlocking an Easter Egg */}
+      <EasterEggBanner
+        unlockedEgg={newlyUnlockedEgg}
+        onDismiss={() => setNewlyUnlockedEgg(null)}
+        totalUnlocked={unlockedIds.length}
+      />
+
+      {/* Floating Active Theme Bar */}
+      {activeTheme && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full border border-amber-400/50 bg-black/85 px-4 py-1.5 text-xs font-mono font-bold text-amber-300 shadow-2xl backdrop-blur-md animate-fade-in">
+          <span>THEME ACTIVE: &ldquo;{activeTheme.toUpperCase()}&rdquo;</span>
+          <span className="text-gray-500">&bull;</span>
+          <button
+            onClick={() => setActiveTheme(null)}
+            className="rounded bg-white/10 px-2 py-0.5 text-[10px] text-white hover:bg-white/20 transition"
+          >
+            DEFAULT CINEMA
+          </button>
+        </div>
+      )}
+
+      {/* Grand Cinema Marquee Header */}
       <header
         className={`sticky top-0 z-30 flex flex-col border-b backdrop-blur-md transition-all duration-500 ${
-          isMatrixMode
-            ? "border-[#00FF41]/30 bg-[#061008]/85"
-            : "border-[#1d2433] bg-[#090c12]/90 shadow-xl shadow-black/60"
+          isMatrix
+            ? "border-[#00FF41]/30 bg-[#051309]/90"
+            : isInterstellar
+            ? "border-amber-500/30 bg-[#070b16]/90"
+            : "border-[#1c2436] bg-[#080b12]/90 shadow-2xl shadow-black/80"
         }`}
       >
         {/* Top Marquee Bulb Chaser Bar */}
-        <div className="flex justify-between items-center px-4 py-1 border-b border-white/5 text-[10px] font-mono tracking-widest text-amber-400/80 bg-black/40 select-none overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-1.5 border-b border-white/5 text-[10px] font-mono tracking-widest text-amber-400 bg-black/60 select-none overflow-hidden">
           <div className="flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-bulb-odd" />
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-bulb-even" />
-            <span className="hidden sm:inline font-bold">NOW SHOWING</span>
-            <span className="hidden md:inline text-gray-500">• SCREEN 1: 35MM STEREO DOLBY</span>
+            <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-bulb-odd shadow-sm shadow-amber-400" />
+            <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-bulb-even shadow-sm shadow-red-500" />
+            <span className="font-extrabold text-white">NOW SHOWING</span>
+            <span className="hidden sm:inline text-gray-400">• SCREEN 1: 35MM STEREO DOLBY</span>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Clapperboard Take Counter (Easter Egg) */}
+            {/* Clapperboard Take Counter */}
             <button
               onClick={snapHeaderClapper}
-              className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-transform ${
+              className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded border transition-transform ${
                 isClappingHeader ? "scale-95" : ""
               } ${
-                isMatrixMode
+                isMatrix
                   ? "border-[#00FF41]/40 bg-[#00FF41]/10 text-[#00FF41]"
                   : "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
               }`}
               title="Click to snap the Director's Clapperboard!"
             >
-              <Clapperboard className="h-3 w-3" />
+              <Clapperboard className="h-3 w-3 text-amber-400" />
               <span>TAKE {headerTakes.toString().padStart(2, "0")}</span>
             </button>
 
-            {/* Matrix Trigger / Exit Pill */}
-            {isMatrixMode ? (
-              <button
-                onClick={() => setIsMatrixMode(false)}
-                className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-600/30 border border-red-500/50 text-[10px] font-bold text-red-300 hover:bg-red-600 hover:text-white transition"
-                title="Exit Matrix mode"
-              >
-                <span>💊 Blue Pill (Exit Matrix)</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsMatrixMode(true)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-gray-500 hover:text-emerald-400 transition"
-                title="There is no spoon... (or type 'matrix')"
-              >
-                <span>🕶️</span>
-              </button>
-            )}
+            {/* Secret Easter Egg Vault Trigger & Discovery Counter */}
+            <button
+              onClick={() => setIsVaultOpen(true)}
+              className={`flex items-center gap-1.5 px-3 py-0.5 rounded-full border transition font-mono font-bold ${
+                unlockedIds.length > 0
+                  ? "border-amber-400/80 bg-amber-400/15 text-amber-300 shadow-md shadow-amber-400/20"
+                  : "border-white/10 bg-white/5 text-gray-400 hover:text-white"
+              }`}
+              title="View secret cinema easter egg vault"
+            >
+              <Trophy className="h-3 w-3 text-amber-400" />
+              <span>
+                VAULT: {unlockedIds.length}/5 FOUND
+              </span>
+            </button>
           </div>
         </div>
 
         {/* Main Cinema Navigation Bar */}
-        <div className="flex items-center justify-between px-6 py-3.5 lg:px-12">
+        <div className="flex items-center justify-between px-6 py-4 lg:px-12">
           {/* Logo & Cinema Branding */}
           <div className="flex items-center gap-3.5">
             <div
-              className={`group flex h-11 w-11 items-center justify-center rounded-2xl border transition-all duration-500 shadow-lg ${
-                isMatrixMode
+              className={`group flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-500 shadow-xl ${
+                isMatrix
                   ? "border-[#00FF41] bg-[#00FF41]/20 text-[#00FF41] shadow-[#00FF41]/30"
+                  : isInterstellar
+                  ? "border-amber-400 bg-amber-400/20 text-amber-300 shadow-amber-400/30"
                   : "border-amber-500/40 bg-gradient-to-br from-red-600 to-amber-600 text-white shadow-red-700/40"
               }`}
             >
-              <Film className="h-5 w-5 spin-reel" />
+              <Film className="h-6 w-6 spin-reel" />
             </div>
 
             <div>
               <div className="flex items-center gap-2">
                 <h1
-                  className={`text-xl font-black tracking-wider uppercase ${
-                    isMatrixMode
+                  className={`text-2xl font-black tracking-wider uppercase ${
+                    isMatrix
                       ? "font-mono text-[#00FF41] matrix-text-glow"
-                      : "text-white drop-shadow-[0_2px_8px_rgba(229,9,20,0.5)]"
+                      : isInterstellar
+                      ? "font-mono text-amber-300"
+                      : "text-white drop-shadow-[0_2px_10px_rgba(229,9,20,0.5)]"
                   }`}
                 >
                   CineBot
                 </h1>
                 <span
-                  className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold font-mono tracking-wider border ${
-                    isMatrixMode
+                  className={`rounded-md px-2.5 py-0.5 text-[10px] font-extrabold font-mono tracking-wider border ${
+                    isMatrix
                       ? "border-[#00FF41]/40 bg-[#00FF41]/15 text-[#00FF41]"
+                      : isInterstellar
+                      ? "border-amber-400/40 bg-amber-400/15 text-amber-300"
                       : "border-amber-500/30 bg-amber-500/10 text-amber-300"
                   }`}
                 >
-                  {isMatrixMode ? "OPERATOR // LIVE" : "35MM THEATER"}
+                  {isMatrix ? "OPERATOR" : isInterstellar ? "TESSERACT" : "35MM THEATER"}
                 </span>
               </div>
               <p
                 className={`text-[11px] ${
-                  isMatrixMode ? "font-mono text-emerald-400" : "text-gray-400"
+                  isMatrix
+                    ? "font-mono text-emerald-400"
+                    : isInterstellar
+                    ? "font-mono text-amber-200/80"
+                    : "text-gray-400"
                 }`}
               >
                 Conversational Cinema Sommelier • Powered by LiveKit
@@ -222,35 +328,34 @@ export default function Home() {
           </div>
 
           {/* Right Navigation & Status Stubs */}
-          <div className="flex items-center gap-3">
-            {/* Vintage Ticket Stub (Clickable Easter Egg!) */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Vintage Ticket Stub (Interactive Easter Egg) */}
             <div
               onClick={() => setIsVipStamped((prev) => !prev)}
-              className={`hidden sm:flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-1.5 transition select-none ${
+              className={`hidden sm:flex relative cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 transition select-none ${
                 isVipStamped
-                  ? "border-amber-400 bg-amber-400/20 text-amber-300 shadow-lg shadow-amber-400/20"
-                  : isMatrixMode
-                  ? "border-[#00FF41]/30 bg-black/60 text-[#00FF41]"
-                  : "border-[#252f42] bg-[#0f1420] text-gray-300 hover:border-amber-500/40"
+                  ? "border-amber-400 bg-amber-400/20 text-amber-300 shadow-xl shadow-amber-400/20"
+                  : "border-[#252f44] bg-[#0c1018] text-gray-300 hover:border-amber-500/50"
               }`}
               title="Click to stamp your cinema ticket!"
             >
-              <Ticket className="h-3.5 w-3.5 text-amber-400" />
-              <span className="text-xs font-mono font-bold">
-                {isVipStamped ? "VIP CRITIC PASS ★" : "ADMIT ONE // ROW C"}
-              </span>
+              <Ticket className="h-4 w-4 text-amber-400" />
+              <div className="flex flex-col text-left">
+                <span className="text-[11px] font-mono font-bold leading-none">
+                  {isVipStamped ? "VIP CRITIC PASS ★" : "ADMIT ONE // ROW C"}
+                </span>
+                <span className="text-[9px] text-gray-500 font-mono mt-0.5">
+                  SEAT 14 &bull; LIVEKIT
+                </span>
+              </div>
             </div>
 
             {/* Fair Usage Modal Button */}
             <button
               onClick={() => setIsFairUsageOpen(true)}
-              className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
-                isMatrixMode
-                  ? "border-[#00FF41]/30 bg-black/60 text-[#00FF41] hover:bg-[#00FF41]/20"
-                  : "border-[#252f42] bg-[#0f1420] text-gray-300 hover:text-white hover:border-red-500/40"
-              }`}
+              className="flex items-center gap-1.5 rounded-xl border border-[#252f44] bg-[#0c1018] px-3.5 py-2 text-xs font-medium text-gray-300 hover:text-white hover:border-red-500/40 transition"
             >
-              <ShieldCheck className="h-3.5 w-3.5 text-red-400" />
+              <ShieldCheck className="h-4 w-4 text-red-400" />
               <span className="hidden sm:inline">Fair Usage</span>
             </button>
 
@@ -259,20 +364,20 @@ export default function Home() {
                 onClick={handleDisconnect}
                 className="text-xs font-bold text-red-400 hover:text-red-300 transition px-2 py-1"
               >
-                Leave Room
+                Exit Room
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Theater Soundstage */}
+      {/* Main Theater Stage */}
       <div className="relative z-10 flex flex-1 flex-col px-4 sm:px-6 py-8 lg:px-12 max-w-7xl mx-auto w-full">
         {token && serverUrl ? (
           <VoiceRoom
             token={token}
             serverUrl={serverUrl}
-            isMatrixMode={isMatrixMode}
+            activeTheme={activeTheme}
             onDisconnect={handleDisconnect}
           />
         ) : (
@@ -280,33 +385,48 @@ export default function Home() {
             {/* Cinema Stage Header Marquee Badge */}
             <div
               className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-mono font-bold tracking-wider ${
-                isMatrixMode
+                isMatrix
                   ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41] matrix-box-glow"
+                  : isInterstellar
+                  ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
                   : "border-amber-500/30 bg-amber-500/10 text-amber-300 shadow-lg shadow-amber-500/10"
               }`}
             >
               <Sparkles className="h-3.5 w-3.5" />
-              <span>{isMatrixMode ? "NEO // LIVE VOICE INTERACTION" : "PREMIERE: REAL-TIME CONVERSATIONAL CINEMA"}</span>
+              <span>
+                {isMatrix
+                  ? "NEO // LIVE VOICE INTERACTION"
+                  : isInterstellar
+                  ? "GARGANTUA // REAL-TIME CONVERSATIONAL LINK"
+                  : "PREMIERE: REAL-TIME CONVERSATIONAL CINEMA"}
+              </span>
             </div>
 
             {/* Cinema Title Heading */}
             <div className="space-y-4 max-w-3xl">
               <h2
                 className={`text-4xl font-black tracking-tight sm:text-6xl ${
-                  isMatrixMode
+                  isMatrix
                     ? "font-mono text-[#00FF41] matrix-text-glow uppercase"
+                    : isInterstellar
+                    ? "font-mono text-amber-300 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]"
                     : "text-white"
                 }`}
               >
-                {isMatrixMode ? (
+                {isMatrix ? (
                   <>
                     WAKE UP, MOVIE LOVER. <br />
                     <span className="text-white">THE MATRIX HAS YOU.</span>
                   </>
+                ) : isInterstellar ? (
+                  <>
+                    LOVE TRANSCENDS DIMENSIONS. <br />
+                    <span className="text-white">FIND YOUR NEXT MASTERPIECE.</span>
+                  </>
                 ) : (
                   <>
                     Step inside the theater. <br />
-                    <span className="bg-gradient-to-r from-red-500 via-amber-400 to-yellow-300 bg-clip-text text-transparent">
+                    <span className="bg-gradient-to-r from-red-500 via-amber-400 to-yellow-300 bg-clip-text text-transparent drop-shadow-sm">
                       Talk to your personal Sommelier.
                     </span>
                   </>
@@ -314,12 +434,16 @@ export default function Home() {
               </h2>
               <p
                 className={`text-base sm:text-lg max-w-2xl mx-auto leading-relaxed ${
-                  isMatrixMode ? "font-mono text-emerald-300/90" : "text-gray-300"
+                  isMatrix
+                    ? "font-mono text-emerald-300/90"
+                    : isInterstellar
+                    ? "font-mono text-amber-100/90"
+                    : "text-gray-300"
                 }`}
               >
                 No endless scrolling. No text walls. Ask for mood, eras, actors, or follow-ups like{" "}
-                <span className="italic font-semibold text-white">&ldquo;Who directed the second one?&rdquo;</span> or{" "}
-                <span className="italic font-semibold text-white">&ldquo;Compare the first two&rdquo;</span>.
+                <span className="italic font-bold text-white">&ldquo;Who directed the second one?&rdquo;</span> or{" "}
+                <span className="italic font-bold text-white">&ldquo;Compare the first two&rdquo;</span>.
                 Posters and streaming options project onto your screen live as CineBot speaks.
               </p>
             </div>
@@ -340,25 +464,27 @@ export default function Home() {
               <button
                 onClick={startVoiceChat}
                 disabled={isConnecting}
-                className={`group relative inline-flex items-center gap-3.5 overflow-hidden rounded-2xl px-8 py-4.5 text-base font-extrabold tracking-wide shadow-2xl active:scale-95 transition-all duration-300 disabled:opacity-50 ${
-                  isMatrixMode
+                className={`group relative inline-flex items-center gap-3.5 overflow-hidden rounded-2xl px-8 py-4.5 text-base font-black tracking-wide shadow-2xl active:scale-95 transition-all duration-300 disabled:opacity-50 ${
+                  isMatrix
                     ? "bg-[#00FF41] text-black hover:bg-[#00cc33] shadow-[#00FF41]/40 font-mono"
+                    : isInterstellar
+                    ? "bg-amber-400 text-black hover:bg-amber-300 shadow-amber-400/40 font-mono"
                     : "bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white shadow-red-600/40 hover:brightness-110"
                 }`}
               >
                 <div
                   className={`flex h-9 w-9 items-center justify-center rounded-xl transition ${
-                    isMatrixMode ? "bg-black/20" : "bg-white/20 group-hover:scale-110"
+                    isMatrix ? "bg-black/20" : "bg-white/20 group-hover:scale-110"
                   }`}
                 >
                   <Mic className="h-5 w-5 fill-current" />
                 </div>
                 <span>
                   {isConnecting
-                    ? isMatrixMode
+                    ? isMatrix
                       ? "JACKING INTO LIVEKIT ROOM..."
                       : "Connecting to Theater Soundstage..."
-                    : isMatrixMode
+                    : isMatrix
                     ? "ENTER THE CONSTRUCT"
                     : "Start Voice Conversation"}
                 </span>
@@ -367,86 +493,121 @@ export default function Home() {
               <button
                 onClick={() => setIsFairUsageOpen(true)}
                 className={`text-[11px] underline underline-offset-4 transition ${
-                  isMatrixMode ? "font-mono text-emerald-400/80 hover:text-[#00FF41]" : "text-gray-400 hover:text-gray-200"
+                  isMatrix
+                    ? "font-mono text-emerald-400/80 hover:text-[#00FF41]"
+                    : "text-gray-400 hover:text-gray-200"
                 }`}
               >
                 10-min session cap • 6 sessions/15m • Fair Usage Policy
               </button>
             </div>
 
-            {/* Interactive Cinema Lobby Stalls */}
+            {/* Interactive Cinema Feature Stalls */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-10 max-w-4xl w-full text-left">
-              {/* Feature 1 */}
               <div
                 className={`rounded-2xl border p-6 transition-all duration-300 ${
-                  isMatrixMode
-                    ? "border-[#00FF41]/30 bg-[#06110a]/80"
-                    : "border-[#222938] bg-gradient-to-b from-[#131924]/80 to-[#0c1017]/90 shadow-xl"
+                  isMatrix
+                    ? "border-[#00FF41]/30 bg-[#051309]/80"
+                    : isInterstellar
+                    ? "border-amber-500/30 bg-[#070b16]/80"
+                    : "border-[#1e2738] bg-gradient-to-b from-[#111724]/80 to-[#090d14]/90 shadow-xl"
                 }`}
               >
                 <div
                   className={`flex h-11 w-11 items-center justify-center rounded-xl mb-4 border ${
-                    isMatrixMode
+                    isMatrix
                       ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41]"
+                      : isInterstellar
+                      ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
                       : "border-red-500/30 bg-red-600/10 text-red-400"
                   }`}
                 >
                   <Zap className="h-5 w-5" />
                 </div>
-                <h3 className={`text-base font-extrabold ${isMatrixMode ? "font-mono text-[#00FF41]" : "text-white"}`}>
+                <h3
+                  className={`text-base font-extrabold ${
+                    isMatrix ? "font-mono text-[#00FF41]" : "text-white"
+                  }`}
+                >
                   Sub-300ms Conversational Voice
                 </h3>
-                <p className={`mt-1.5 text-xs leading-relaxed ${isMatrixMode ? "font-mono text-emerald-300/80" : "text-gray-400"}`}>
+                <p
+                  className={`mt-1.5 text-xs leading-relaxed ${
+                    isMatrix ? "font-mono text-emerald-300/80" : "text-gray-400"
+                  }`}
+                >
                   Full-duplex WebRTC via LiveKit Agents, Groq LLM reasoning, and Deepgram Nova-3 voice synthesis with natural cutscene skipping.
                 </p>
               </div>
 
-              {/* Feature 2 */}
               <div
                 className={`rounded-2xl border p-6 transition-all duration-300 ${
-                  isMatrixMode
-                    ? "border-[#00FF41]/30 bg-[#06110a]/80"
-                    : "border-[#222938] bg-gradient-to-b from-[#131924]/80 to-[#0c1017]/90 shadow-xl"
+                  isMatrix
+                    ? "border-[#00FF41]/30 bg-[#051309]/80"
+                    : isInterstellar
+                    ? "border-amber-500/30 bg-[#070b16]/80"
+                    : "border-[#1e2738] bg-gradient-to-b from-[#111724]/80 to-[#090d14]/90 shadow-xl"
                 }`}
               >
                 <div
                   className={`flex h-11 w-11 items-center justify-center rounded-xl mb-4 border ${
-                    isMatrixMode
+                    isMatrix
                       ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41]"
+                      : isInterstellar
+                      ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
                       : "border-amber-500/30 bg-amber-500/10 text-amber-400"
                   }`}
                 >
                   <Sparkles className="h-5 w-5" />
                 </div>
-                <h3 className={`text-base font-extrabold ${isMatrixMode ? "font-mono text-[#00FF41]" : "text-white"}`}>
+                <h3
+                  className={`text-base font-extrabold ${
+                    isMatrix ? "font-mono text-[#00FF41]" : "text-white"
+                  }`}
+                >
                   Referential Follow-Ups
                 </h3>
-                <p className={`mt-1.5 text-xs leading-relaxed ${isMatrixMode ? "font-mono text-emerald-300/80" : "text-gray-400"}`}>
+                <p
+                  className={`mt-1.5 text-xs leading-relaxed ${
+                    isMatrix ? "font-mono text-emerald-300/80" : "text-gray-400"
+                  }`}
+                >
                   Ask &ldquo;Who directed the first one?&rdquo;, &ldquo;Which is scarier?&rdquo;, or &ldquo;Compare the two&rdquo; with grounded in-memory awareness.
                 </p>
               </div>
 
-              {/* Feature 3 */}
               <div
                 className={`rounded-2xl border p-6 transition-all duration-300 ${
-                  isMatrixMode
-                    ? "border-[#00FF41]/30 bg-[#06110a]/80"
-                    : "border-[#222938] bg-gradient-to-b from-[#131924]/80 to-[#0c1017]/90 shadow-xl"
+                  isMatrix
+                    ? "border-[#00FF41]/30 bg-[#051309]/80"
+                    : isInterstellar
+                    ? "border-amber-500/30 bg-[#070b16]/80"
+                    : "border-[#1e2738] bg-gradient-to-b from-[#111724]/80 to-[#090d14]/90 shadow-xl"
                 }`}
               >
                 <div
                   className={`flex h-11 w-11 items-center justify-center rounded-xl mb-4 border ${
-                    isMatrixMode
+                    isMatrix
                       ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41]"
+                      : isInterstellar
+                      ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
                       : "border-cyan-500/30 bg-cyan-500/10 text-cyan-400"
                   }`}
                 >
                   <Tv className="h-5 w-5" />
                 </div>
-                <h3 className={`text-base font-extrabold ${isMatrixMode ? "font-mono text-[#00FF41]" : "text-white"}`}>
-                  Trailers & Streaming Sync
+                <h3
+                  className={`text-base font-extrabold ${
+                    isMatrix ? "font-mono text-[#00FF41]" : "text-white"
+                  }`}
+                >
+                  Trailers &amp; Streaming Sync
                 </h3>
-                <p className={`mt-1.5 text-xs leading-relaxed ${isMatrixMode ? "font-mono text-emerald-300/80" : "text-gray-400"}`}>
+                <p
+                  className={`mt-1.5 text-xs leading-relaxed ${
+                    isMatrix ? "font-mono text-emerald-300/80" : "text-gray-400"
+                  }`}
+                >
                   Integrated with TMDB to synchronize official YouTube trailers and streaming providers (Netflix, Prime, Disney+) live on screen.
                 </p>
               </div>
@@ -455,12 +616,14 @@ export default function Home() {
         )}
       </div>
 
-      {/* Vintage Cinema Footer with 35mm Sprocket Border */}
+      {/* Vintage Cinema Footer with 35mm Sprocket Perforations */}
       <footer
         className={`relative z-10 border-t py-6 text-center text-xs flex flex-col sm:flex-row items-center justify-center gap-3 transition-colors ${
-          isMatrixMode
-            ? "border-[#00FF41]/20 bg-[#061008] text-emerald-400 font-mono"
-            : "border-[#1d2433] bg-[#07090f] text-gray-400"
+          isMatrix
+            ? "border-[#00FF41]/20 bg-[#051008] text-emerald-400 font-mono"
+            : isInterstellar
+            ? "border-amber-500/20 bg-[#050810] text-amber-300 font-mono"
+            : "border-[#1c2436] bg-[#07090f] text-gray-400"
         }`}
       >
         <span>
@@ -475,11 +638,11 @@ export default function Home() {
         </button>
         <span className="hidden sm:inline">&bull;</span>
         <button
-          onClick={() => setIsMatrixMode((prev) => !prev)}
-          className="hover:text-white transition"
-          title="Toggle Matrix Easter Egg"
+          onClick={() => setIsVaultOpen(true)}
+          className="hover:text-amber-300 transition flex items-center gap-1 font-mono"
         >
-          {isMatrixMode ? "[Exit Matrix]" : "[Easter Egg: 🕶️]"}
+          <Trophy className="h-3 w-3 text-amber-400" />
+          <span>Secret Vault ({unlockedIds.length}/5)</span>
         </button>
       </footer>
     </main>
