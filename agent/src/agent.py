@@ -56,6 +56,23 @@ class MovieTools:
 
     def __init__(self, room):
         self.room = room
+        self.active_movies: list[dict] = []
+
+    def _format_active_summary(self, movies: list[dict]) -> str:
+        """Format movies with explicit ordinal positions (#1, #2, etc.) for referential grounding."""
+        ordinals = ["first", "second", "third", "fourth", "fifth", "sixth"]
+        summary = []
+        for i, m in enumerate(movies[:6]):
+            summary.append({
+                "position": i + 1,
+                "ordinal": ordinals[i] if i < len(ordinals) else f"#{i+1}",
+                "title": m.get("title"),
+                "release_year": (m.get("release_date") or "").split("-")[0],
+                "rating": m.get("rating"),
+                "tmdb_id": m.get("id"),
+                "overview": m.get("overview"),
+            })
+        return json.dumps(summary)
 
     async def _broadcast(self, event_type: str, data: dict):
         """Broadcast structured movie events over LiveKit data channel."""
@@ -87,11 +104,13 @@ class MovieTools:
             if results:
                 curated_movies.append(results[0])
         if curated_movies:
+            self.active_movies = curated_movies
             await self._broadcast("MOVIE_RECOMMENDATIONS", {
                 "genre": "Curated Selection",
                 "movies": curated_movies,
             })
-        return json.dumps(curated_movies)
+            return self._format_active_summary(curated_movies)
+        return json.dumps([])
 
     @function_tool(
         description="Discover movie recommendations by genre (e.g. 'sci-fi', 'thriller', 'neo-noir', 'horror', 'action', 'comedy', 'romance', 'drama'), release years, or minimum rating."
@@ -114,8 +133,10 @@ class MovieTools:
             min_rating=min_rating,
         )
         if movies:
+            self.active_movies = movies
             await self._broadcast("MOVIE_RECOMMENDATIONS", {"genre": genre or "curated", "movies": movies})
-        return json.dumps(movies)
+            return self._format_active_summary(movies)
+        return json.dumps([])
 
     @function_tool(
         description="Search for movies by specific title, director, or query string (e.g. 'Inception', 'The Dark Knight', 'Blade Runner')."
@@ -124,8 +145,10 @@ class MovieTools:
         """Search movies in TMDB database."""
         movies = await search_movies(query=query, year=year)
         if movies:
+            self.active_movies = movies
             await self._broadcast("MOVIE_SEARCH_RESULTS", {"query": query, "movies": movies})
-        return json.dumps(movies)
+            return self._format_active_summary(movies)
+        return json.dumps([])
 
     @function_tool(
         description="Get movie details including YouTube trailer and streaming providers (Netflix, Prime, Disney+) using the TMDB movie ID."
@@ -135,6 +158,15 @@ class MovieTools:
         details = await get_movie_details_and_extras(movie_id=movie_id)
         await self._broadcast("MOVIE_DETAILS", details)
         return json.dumps(details)
+
+    @function_tool(
+        description="Get the list of movies currently on the user's screen when the user asks follow-up questions (e.g. 'What was the first movie again?', 'Which movies are currently on my screen?')."
+    )
+    async def get_active_on_screen_movies(self) -> str:
+        """Fetch active recommendations currently visible on screen."""
+        if not self.active_movies:
+            return "No movies currently on screen."
+        return self._format_active_summary(self.active_movies)
 
 
 async def entrypoint(ctx: JobContext):
@@ -152,6 +184,7 @@ async def entrypoint(ctx: JobContext):
         movie_tools.discover_movies,
         movie_tools.search_movies,
         movie_tools.get_movie_details_and_extras,
+        movie_tools.get_active_on_screen_movies,
     ]
 
     # Flexible LLM provider resolution (Groq, OpenAI, or Grok/xAI)

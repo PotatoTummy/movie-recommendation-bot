@@ -8,8 +8,20 @@ import {
   useVoiceAssistant,
   useRoomContext,
 } from "@livekit/components-react";
-import { Track, RoomEvent } from "livekit-client";
-import { Mic, MicOff, PhoneOff, Sparkles, Volume2, Film, MessageSquare, User, Send, FastForward } from "lucide-react";
+import { RoomEvent } from "livekit-client";
+import {
+  Mic,
+  MicOff,
+  PhoneOff,
+  Sparkles,
+  Volume2,
+  Film,
+  MessageSquare,
+  Send,
+  FastForward,
+  Clapperboard,
+  Tv,
+} from "lucide-react";
 import { MovieItem, MovieDetails, MovieDataEvent } from "@/types/movie";
 import { MovieGrid } from "./MovieGrid";
 import { TrailerModal } from "./TrailerModal";
@@ -25,10 +37,11 @@ interface TranscriptItem {
 interface VoiceRoomProps {
   token: string;
   serverUrl: string;
+  isMatrixMode?: boolean;
   onDisconnect: () => void;
 }
 
-function FormattedTranscript({ text }: { text: string }) {
+function FormattedTranscript({ text, isMatrix }: { text: string; isMatrix?: boolean }) {
   // Parse markdown bold **text** cleanly into strong elements
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return (
@@ -36,7 +49,14 @@ function FormattedTranscript({ text }: { text: string }) {
       {parts.map((part, i) => {
         if (part.startsWith("**") && part.endsWith("**")) {
           return (
-            <strong key={i} className="font-bold text-white bg-white/5 px-1 py-0.5 rounded">
+            <strong
+              key={i}
+              className={`font-bold px-1 py-0.5 rounded ${
+                isMatrix
+                  ? "text-[#00FF41] bg-[#00FF41]/20 border border-[#00FF41]/30 font-mono"
+                  : "text-amber-300 bg-amber-500/10 border border-amber-500/20"
+              }`}
+            >
               {part.slice(2, -2)}
             </strong>
           );
@@ -47,7 +67,7 @@ function FormattedTranscript({ text }: { text: string }) {
   );
 }
 
-export function VoiceRoom({ token, serverUrl, onDisconnect }: VoiceRoomProps) {
+export function VoiceRoom({ token, serverUrl, isMatrixMode = false, onDisconnect }: VoiceRoomProps) {
   return (
     <LiveKitRoom
       token={token}
@@ -59,21 +79,37 @@ export function VoiceRoom({ token, serverUrl, onDisconnect }: VoiceRoomProps) {
       className="flex flex-col flex-1"
     >
       <RoomAudioRenderer />
-      <VoiceRoomContent onDisconnect={onDisconnect} />
+      <VoiceRoomContent isMatrixMode={isMatrixMode} onDisconnect={onDisconnect} />
     </LiveKitRoom>
   );
 }
 
-function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
+function VoiceRoomContent({
+  isMatrixMode = false,
+  onDisconnect,
+}: {
+  isMatrixMode?: boolean;
+  onDisconnect: () => void;
+}) {
   const room = useRoomContext();
   const { state: agentState, audioTrack } = useVoiceAssistant();
 
   const [isMicOn, setIsMicOn] = useState<boolean>(true);
   const [movies, setMovies] = useState<MovieItem[]>([]);
-  const [gridTitle, setGridTitle] = useState<string>("Live Recommendations");
+  const [gridTitle, setGridTitle] = useState<string>("Now Showing");
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   const [typedMessage, setTypedMessage] = useState<string>("");
   const [isSearchingText, setIsSearchingText] = useState<boolean>(false);
+
+  // Easter Egg: Clapperboard Take counter
+  const [takeCount, setTakeCount] = useState<number>(1);
+  const [isClapping, setIsClapping] = useState<boolean>(false);
+
+  const handleClapSnap = () => {
+    setIsClapping(true);
+    setTakeCount((prev) => prev + 1);
+    setTimeout(() => setIsClapping(false), 300);
+  };
 
   // Sync hardware microphone status
   useEffect(() => {
@@ -104,8 +140,6 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     if (!room?.localParticipant) return;
     const target = !isMicOn;
     try {
-      // setMicrophoneEnabled(false) unpublishes the track and stops the underlying
-      // browser MediaStreamTrack, turning off macOS/Chrome mic indicators immediately.
       await room.localParticipant.setMicrophoneEnabled(target);
       setIsMicOn(target);
     } catch (err) {
@@ -216,7 +250,6 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
           if (!seg.text || !seg.text.trim()) continue;
           const cleanText = seg.text.trim();
 
-          // 1. Match by segment ID if updating in-progress transcript
           const idx = updated.findIndex((t) => t.id === seg.id);
           if (idx >= 0) {
             updated[idx] = {
@@ -227,7 +260,6 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             continue;
           }
 
-          // 2. Prevent duplicate entries from same sender with identical text
           const lastIdx = updated.length - 1;
           if (lastIdx >= 0 && updated[lastIdx].sender === targetSender) {
             if (!updated[lastIdx].isFinal || updated[lastIdx].text.toLowerCase() === cleanText.toLowerCase()) {
@@ -240,7 +272,6 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             }
           }
 
-          // 3. Append new segment
           updated.push({
             id: seg.id || `seg-${Date.now()}`,
             sender: targetSender,
@@ -248,7 +279,7 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
             isFinal: !!seg.final,
           });
         }
-        return updated.slice(-8); // Keep last 8 lines
+        return updated.slice(-8);
       });
     };
 
@@ -264,12 +295,10 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
   const handleWatchTrailer = useCallback(async (movieId: number, title: string) => {
     setIsLoadingTrailer(true);
     try {
-      // Check if we already have it in activeDetails
       if (activeDetails && activeDetails.id === movieId && activeDetails.trailer_youtube_key) {
         setActiveTrailer({ key: activeDetails.trailer_youtube_key, title });
         return;
       }
-      // Or send data channel message or fetch trailer
       const res = await fetch(`https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=48e9c4038a834223ba99f7d2be73eb8b`);
       if (res.ok) {
         const data = await res.json();
@@ -317,7 +346,7 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     }
   }, []);
 
-  // Skip / interrupt the bot's current speech (like a game cutscene skip)
+  // Skip / interrupt the bot's current speech
   const handleSkipSpeech = useCallback(async () => {
     if (!room) return;
     try {
@@ -334,210 +363,300 @@ function VoiceRoomContent({ onDisconnect }: { onDisconnect: () => void }) {
     }
   }, [room]);
 
-  // Format status badge - prioritizing CineBot thinking/searching & speaking states
+  // Format status badge
   const getAgentStatusBadge = () => {
-    // 1. CineBot actively processing (thinking or searching TMDB)
     if (isSearchingText || agentState === "thinking") {
-      return { text: "CineBot is thinking & searching...", color: "bg-amber-400", ping: true };
+      return {
+        text: isMatrixMode ? "NEO // COMPUTING RECOMMENDATIONS..." : "CineBot is searching & thinking...",
+        color: isMatrixMode ? "bg-[#00FF41]" : "bg-amber-400",
+        ping: true,
+      };
     }
-    // 2. CineBot speaking
     if (agentState === "speaking") {
-      return { text: "CineBot is speaking...", color: "bg-red-500", ping: true };
+      return {
+        text: isMatrixMode ? "OPERATOR TRANSMITTING AUDIO..." : "CineBot is speaking...",
+        color: isMatrixMode ? "bg-[#00FF41]" : "bg-red-500",
+        ping: true,
+      };
     }
-    // 3. Connecting state
     if (agentState === "connecting") {
-      return { text: "Connecting to CineBot...", color: "bg-blue-500", ping: true };
+      return {
+        text: isMatrixMode ? "INITIALIZING CONSTRUCT PROTOCOL..." : "Connecting to Soundstage...",
+        color: isMatrixMode ? "bg-emerald-400" : "bg-blue-500",
+        ping: true,
+      };
     }
-    // 4. If hardware mic is stopped / off
     if (!isMicOn) {
-      return { text: "Mic Off • Type your request below", color: "bg-gray-400", ping: false };
+      return {
+        text: isMatrixMode ? "AUDIO INPUT TERMINATED // TYPE BELOW" : "Mic Off • Type your request below",
+        color: "bg-gray-500",
+        ping: false,
+      };
     }
-    // 5. Listening state
     if (agentState === "listening") {
-      return { text: "Listening to you...", color: "bg-emerald-500", ping: true };
+      return {
+        text: isMatrixMode ? "AUDIO LINK OPEN // SPEAK FREELY" : "Microphone Live • Speak naturally",
+        color: isMatrixMode ? "bg-[#00FF41]" : "bg-emerald-500",
+        ping: true,
+      };
     }
-    return { text: "Ready • Speak naturally", color: "bg-emerald-400", ping: false };
+    return {
+      text: isMatrixMode ? "READY // STANDBY" : "Soundstage Ready • Ask anything",
+      color: isMatrixMode ? "bg-[#00FF41]" : "bg-emerald-400",
+      ping: false,
+    };
   };
 
   const status = getAgentStatusBadge();
 
   return (
-    <div className="flex flex-col flex-1 space-y-8">
-      {/* Top Interactive Voice Control Console */}
-      <div className="relative overflow-hidden rounded-3xl border border-cine-border bg-gradient-to-b from-[#161c29] to-[#0e131d] p-6 sm:p-8 shadow-2xl">
-        {/* Background glow effects */}
-        <div className="absolute -top-24 -left-24 h-64 w-64 rounded-full bg-red-600/10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-purple-600/10 blur-3xl pointer-events-none" />
-
-        <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
-          {/* Agent Identity & Status */}
-          <div className="flex items-center gap-4">
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-red-600/20 border border-red-500/30 text-red-500 shadow-lg shadow-red-500/20">
-              <Film className="h-8 w-8" />
-              {status.ping && (
-                <span className={`absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full ${status.color} animate-ping`} />
-              )}
-              <span className={`absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full ${status.color} border-2 border-[#161c29]`} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xl font-bold text-white">CineBot</h3>
-                <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400 border border-red-500/20">
-                  AI SOMMELIER
-                </span>
-              </div>
-              <p className="mt-1 flex items-center gap-2 text-sm text-gray-300">
-                <span className={`h-2 w-2 rounded-full ${status.color}`} />
-                {status.text}
-              </p>
-            </div>
+    <div className="flex flex-col flex-1 space-y-8 animate-fade-in">
+      {/* Authentic Director's Clapperboard Console */}
+      <div
+        className={`relative overflow-hidden rounded-3xl border transition-all duration-500 shadow-2xl ${
+          isMatrixMode
+            ? "border-[#00FF41]/40 bg-[#06110a]/90 matrix-box-glow"
+            : "border-[#222938] bg-gradient-to-b from-[#141b27] via-[#0d121b] to-[#090c12] shadow-black/80"
+        }`}
+      >
+        {/* Top Diagonal Clapperboard Zebra Bar (Clickable Easter Egg!) */}
+        <div
+          onClick={handleClapSnap}
+          className={`h-7 w-full cursor-pointer relative flex items-center justify-between px-4 transition-transform duration-200 select-none ${
+            isClapping ? "scale-y-95 -translate-y-0.5" : ""
+          } ${isMatrixMode ? "clapper-stripes-matrix" : "clapper-stripes"}`}
+          title="Click to snap the Director's Clapperboard!"
+        >
+          <div className="flex items-center gap-2 bg-black/85 px-2.5 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider text-white shadow">
+            <Clapperboard className="h-3 w-3 text-amber-400" />
+            <span>{isMatrixMode ? "MATRIX PROTOCOL // TAKE" : "SCENE 1 // TAKE"} {takeCount.toString().padStart(2, "0")}</span>
           </div>
 
-          {/* Real-time Audio Visualizer */}
-          <div className="flex flex-1 max-w-xs items-center justify-center px-4">
-            <div className="flex h-12 w-full items-center justify-center">
-              {audioTrack ? (
-                <BarVisualizer
-                  state={agentState}
-                  trackRef={audioTrack}
-                  barCount={15}
-                  className="h-10 w-full"
-                />
-              ) : (
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <Volume2 className="h-4 w-4 animate-pulse" />
-                  <span>Waiting for audio stream...</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Call Controls: Skip Speech, Mic Mute & Disconnect */}
-          <div className="flex items-center gap-3">
-            {agentState === "speaking" && (
-              <button
-                onClick={handleSkipSpeech}
-                className="flex h-12 items-center gap-1.5 rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 text-xs font-bold text-amber-300 hover:bg-amber-500/25 active:scale-95 transition-all shadow-lg shadow-amber-500/10 animate-pulse"
-                title="Skip bot's speech like a game cutscene"
-              >
-                <FastForward className="h-4 w-4 fill-amber-300" />
-                <span className="font-bold">Skip</span>
-              </button>
-            )}
-
-            <button
-              onClick={handleToggleMicrophone}
-              className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200 ${
-                isMicOn
-                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 shadow-lg shadow-emerald-500/10"
-                  : "border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 shadow-lg shadow-red-500/10"
-              }`}
-              title={isMicOn ? "Turn off Microphone (Stop audio capture)" : "Turn on Microphone (Start audio capture)"}
-            >
-              {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-            </button>
-
-            <button
-              onClick={onDisconnect}
-              className="flex h-12 items-center gap-2 rounded-2xl border border-red-500/30 bg-red-600 px-5 text-sm font-semibold text-white shadow-lg shadow-red-600/30 hover:bg-red-700 transition"
-            >
-              <PhoneOff className="h-4 w-4" />
-              <span>Leave Room</span>
-            </button>
+          <div className="flex items-center gap-3 bg-black/85 px-2.5 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider text-gray-300 shadow">
+            <span>SOUND: 48kHz OPUS</span>
+            <span className="hidden sm:inline">ROLL: 24 FPS</span>
           </div>
         </div>
 
-        {/* Live Subtitles & Conversation Stream */}
-        {transcripts.length > 0 && (
-          <div className="mt-6 border-t border-cine-border/60 pt-4">
-            <div className="flex items-center gap-2 mb-3 text-xs font-semibold text-gray-400">
-              <MessageSquare className="h-3.5 w-3.5 text-cine-cyan" />
-              <span>Live Conversation Transcript</span>
-            </div>
-            <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
-              {transcripts.map((t) => (
-                <div
-                  key={t.id}
-                  className={`flex items-start gap-2.5 text-xs animate-fade-in ${
-                    t.sender === "user" ? "text-gray-200" : "text-rose-200"
-                  }`}
-                >
+        {/* 35mm Sprocket Accent Line */}
+        <div className={`h-2.5 w-full film-sprockets-h opacity-40 border-b ${isMatrixMode ? "border-[#00FF41]/20 bg-[#001708]" : "border-white/5 bg-[#080b11]"}`} />
+
+        <div className="p-6 sm:p-8">
+          <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
+            {/* Clapperboard Identity & Live Status */}
+            <div className="flex items-center gap-4">
+              <div
+                onClick={handleClapSnap}
+                className={`cursor-pointer relative flex h-16 w-16 items-center justify-center rounded-2xl border transition-all duration-300 shadow-xl ${
+                  isMatrixMode
+                    ? "border-[#00FF41]/50 bg-[#00FF41]/10 text-[#00FF41] shadow-[#00FF41]/20"
+                    : "border-amber-500/30 bg-gradient-to-br from-red-600/20 to-amber-600/10 text-amber-400 shadow-red-900/30"
+                }`}
+                title="CineBot AI Sommelier • Click to snap take"
+              >
+                <Film className={`h-8 w-8 ${isClapping ? "scale-110" : ""}`} />
+                {status.ping && (
+                  <span className={`absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full ${status.color} animate-ping`} />
+                )}
+                <span className={`absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full ${status.color} border-2 border-black`} />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className={`text-xl font-extrabold tracking-tight ${isMatrixMode ? "font-mono text-[#00FF41] matrix-text-glow" : "text-white"}`}>
+                    CineBot
+                  </h3>
                   <span
-                    className={`mt-0.5 inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold shrink-0 ${
-                      t.sender === "user"
-                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                        : "bg-red-500/20 text-red-400 border border-red-500/30"
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold font-mono tracking-wider border ${
+                      isMatrixMode
+                        ? "border-[#00FF41]/40 bg-[#00FF41]/15 text-[#00FF41]"
+                        : "border-red-500/30 bg-red-600/15 text-red-400"
                     }`}
                   >
-                    {t.sender === "user" ? "You" : "AI"}
+                    {isMatrixMode ? "OPERATOR" : "CINEMA SOMMELIER"}
                   </span>
-                  <p className="leading-relaxed py-0.5">
-                    <span className="font-semibold text-gray-400 mr-1.5">
-                      {t.sender === "user" ? "You:" : "CineBot:"}
-                    </span>
-                    <FormattedTranscript text={t.text} />
-                    {!t.isFinal && (
-                      <span className="inline-block w-1.5 h-1.5 ml-1 rounded-full bg-red-400 animate-ping" />
-                    )}
-                  </p>
                 </div>
-              ))}
+                <p className={`mt-1 flex items-center gap-2 text-xs sm:text-sm ${isMatrixMode ? "font-mono text-emerald-300" : "text-gray-300"}`}>
+                  <span className={`h-2 w-2 rounded-full ${status.color}`} />
+                  {status.text}
+                </p>
+              </div>
+            </div>
+
+            {/* Analog Soundboard / Film Optical VU Audio Visualizer */}
+            <div className="flex flex-1 max-w-xs items-center justify-center px-4">
+              <div
+                className={`flex h-14 w-full items-center justify-center rounded-2xl border px-3 py-1.5 shadow-inner ${
+                  isMatrixMode
+                    ? "border-[#00FF41]/30 bg-black/80"
+                    : "border-[#222938] bg-[#070a10]/90"
+                }`}
+              >
+                {audioTrack ? (
+                  <BarVisualizer
+                    state={agentState}
+                    trackRef={audioTrack}
+                    barCount={17}
+                    className="h-10 w-full"
+                  />
+                ) : (
+                  <div className={`flex items-center gap-2 text-xs font-mono ${isMatrixMode ? "text-[#00FF41]/70" : "text-gray-500"}`}>
+                    <Volume2 className="h-4 w-4 animate-pulse" />
+                    <span>{isMatrixMode ? "AWAITING AUDIO STREAM..." : "Optical audio track standby"}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Vintage Studio Controls: Skip Cutscene, Microphone, Leave Room */}
+            <div className="flex items-center gap-3">
+              {agentState === "speaking" && (
+                <button
+                  onClick={handleSkipSpeech}
+                  className={`flex h-12 items-center gap-1.5 rounded-2xl border px-4 text-xs font-bold active:scale-95 transition-all shadow-lg animate-pulse ${
+                    isMatrixMode
+                      ? "border-[#00FF41]/50 bg-[#00FF41]/20 text-[#00FF41] hover:bg-[#00FF41] hover:text-black"
+                      : "border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 shadow-amber-500/20"
+                  }`}
+                  title="Skip speaking dialogue like a game cutscene"
+                >
+                  <FastForward className="h-4 w-4 fill-current" />
+                  <span>SKIP SCENE</span>
+                </button>
+              )}
+
+              {/* Vintage Studio Microphone Button */}
+              <button
+                onClick={handleToggleMicrophone}
+                className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200 shadow-lg ${
+                  isMicOn
+                    ? isMatrixMode
+                      ? "border-[#00FF41] bg-[#00FF41]/20 text-[#00FF41] shadow-[#00FF41]/30"
+                      : "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 shadow-emerald-500/20"
+                    : "border-red-500/50 bg-red-600/15 text-red-400 hover:bg-red-600/25 shadow-red-500/20"
+                }`}
+                title={isMicOn ? "Turn off Microphone (Stop audio capture)" : "Turn on Microphone (Start audio capture)"}
+              >
+                {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+                {isMicOn && (
+                  <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                )}
+              </button>
+
+              {/* Leave Room / Exit Cinema Button */}
+              <button
+                onClick={onDisconnect}
+                className={`flex h-12 items-center gap-2 rounded-2xl border px-5 text-xs font-bold text-white shadow-lg active:scale-95 transition ${
+                  isMatrixMode
+                    ? "border-[#00FF41]/40 bg-[#003311] hover:bg-red-900/60"
+                    : "border-red-500/40 bg-red-600 hover:bg-red-700 shadow-red-600/30"
+                }`}
+              >
+                <PhoneOff className="h-4 w-4" />
+                <span>EXIT CINEMA</span>
+              </button>
             </div>
           </div>
-        )}
 
-        {/* Text Input Box for non-voice / typing users */}
-        <form onSubmit={handleSendTextMessage} className="mt-6 border-t border-cine-border/60 pt-4 flex items-center gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={typedMessage}
-              onChange={(e) => setTypedMessage(e.target.value)}
-              placeholder="Prefer typing? Type your request here (e.g. 'Recommend 90s action thrillers' or 'Show trailer for Inception')..."
-              className="w-full rounded-xl border border-cine-border bg-[#080b11]/80 px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!typedMessage.trim()}
-            className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-40 transition"
+          {/* Live Subtitles Bar (Yellow/White Cinema Subtitles) */}
+          {transcripts.length > 0 && (
+            <div className={`mt-6 border-t pt-4 ${isMatrixMode ? "border-[#00FF41]/20" : "border-white/10"}`}>
+              <div className="flex items-center gap-2 mb-3 text-xs font-mono font-semibold text-gray-400">
+                <MessageSquare className={`h-3.5 w-3.5 ${isMatrixMode ? "text-[#00FF41]" : "text-amber-400"}`} />
+                <span>{isMatrixMode ? "DECRYPTED AUDIO TRANSCRIPT" : "Cinema Dialogue & Dialogue History"}</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
+                {transcripts.map((t) => (
+                  <div
+                    key={t.id}
+                    className={`flex items-start gap-2.5 text-xs animate-fade-in ${
+                      t.sender === "user"
+                        ? "text-gray-300"
+                        : isMatrixMode
+                        ? "text-[#00FF41] font-mono"
+                        : "text-amber-100"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-mono font-bold shrink-0 ${
+                        t.sender === "user"
+                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          : isMatrixMode
+                          ? "bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/40"
+                          : "bg-red-600/20 text-red-400 border border-red-500/30"
+                      }`}
+                    >
+                      {t.sender === "user" ? "YOU" : "BOT"}
+                    </span>
+                    <p className="leading-relaxed py-0.5 font-medium">
+                      <span className="font-semibold text-gray-400 mr-1.5 font-mono">
+                        {t.sender === "user" ? "You:" : "CineBot:"}
+                      </span>
+                      <FormattedTranscript text={t.text} isMatrix={isMatrixMode} />
+                      {!t.isFinal && (
+                        <span className={`inline-block w-1.5 h-1.5 ml-1 rounded-full animate-ping ${isMatrixMode ? "bg-[#00FF41]" : "bg-amber-400"}`} />
+                      )}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Screenplay Teleprompter / Text Input Box for typing users */}
+          <form
+            onSubmit={handleSendTextMessage}
+            className={`mt-6 border-t pt-4 flex items-center gap-2 ${isMatrixMode ? "border-[#00FF41]/20" : "border-white/10"}`}
           >
-            <Send className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Send</span>
-          </button>
-        </form>
-
-        {/* Quick Voice Hints */}
-        <div className="mt-6 border-t border-cine-border/60 pt-4 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-          <span className="font-semibold text-gray-300">Try saying:</span>
-          <span className="rounded-lg bg-white/5 px-2.5 py-1 text-gray-300">
-            &ldquo;Recommend mind-bending sci-fi movies&rdquo;
-          </span>
-          <span className="rounded-lg bg-white/5 px-2.5 py-1 text-gray-300">
-            &ldquo;Find Christopher Nolan thrillers&rdquo;
-          </span>
-          <span className="rounded-lg bg-white/5 px-2.5 py-1 text-gray-300">
-            &ldquo;What are top horror movies from 2024?&rdquo;
-          </span>
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={typedMessage}
+                onChange={(e) => setTypedMessage(e.target.value)}
+                placeholder={
+                  isMatrixMode
+                    ? "Transmit query to Operator (e.g. 'Compare the first two films' or 'Who directed the second one?')..."
+                    : "Pitch a movie, actor, or ask follow-ups: 'Who directed the second one?' or 'Compare the first two'..."
+                }
+                className={`w-full rounded-xl border px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none transition ${
+                  isMatrixMode
+                    ? "border-[#00FF41]/40 bg-black/90 font-mono text-[#00FF41] focus:border-[#00FF41] focus:ring-1 focus:ring-[#00FF41]"
+                    : "border-[#222938] bg-[#070a10]/90 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                }`}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!typedMessage.trim()}
+              className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold text-white transition disabled:opacity-40 ${
+                isMatrixMode
+                  ? "bg-[#00FF41] text-black hover:bg-[#00cc33] font-mono"
+                  : "bg-red-600 hover:bg-red-500 shadow-md shadow-red-600/30"
+              }`}
+            >
+              <Send className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">SEND</span>
+            </button>
+          </form>
         </div>
       </div>
 
-      {/* Dynamic Movie Grid synced with Agent via WebRTC Data Channel */}
+      {/* Movie Recommendations Projection Grid */}
       <MovieGrid
         movies={movies}
         title={gridTitle}
+        isMatrixMode={isMatrixMode}
         onWatchTrailer={handleWatchTrailer}
         onCheckProviders={handleCheckProviders}
       />
 
-      {/* Trailer Video Player Modal */}
+      {/* Trailer & Streaming Modals */}
       <TrailerModal
         youtubeKey={activeTrailer?.key || null}
         movieTitle={activeTrailer?.title || ""}
         onClose={() => setActiveTrailer(null)}
       />
 
-      {/* Where to Watch / Streaming Modal */}
       <StreamingModal
         movie={activeDetails}
         onClose={() => setActiveDetails(null)}

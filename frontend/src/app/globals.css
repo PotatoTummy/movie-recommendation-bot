@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #080b11;
-  --foreground: #ededed;
+  --background: #08090d;
+  --foreground: #f2f2f2;
 }
 
 body {
@@ -14,17 +14,101 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom scrollbar */
+/* Custom Cinema scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0e14;
+  background: #0b0d14;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f293d;
+  background: #232c3d;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2e3d5b;
+  background: #e50914;
+}
+
+/* Authentic 35mm Film Strip Sprocket Perforations */
+.film-sprockets-h {
+  background-image: radial-gradient(circle, #08090d 35%, transparent 40%);
+  background-size: 20px 20px;
+  background-repeat: repeat-x;
+}
+
+/* Director's Clapperboard Diagonal Stripes */
+.clapper-stripes {
+  background: repeating-linear-gradient(
+    -45deg,
+    #11141c,
+    #11141c 14px,
+    #f3f4f6 14px,
+    #f3f4f6 28px
+  );
+}
+
+.clapper-stripes-matrix {
+  background: repeating-linear-gradient(
+    -45deg,
+    #051c0d,
+    #051c0d 14px,
+    #00ff41 14px,
+    #00ff41 28px
+  );
+}
+
+/* Cinematic Projector Volumetric Light Cone */
+.projector-beam {
+  background: radial-gradient(ellipse 60% 50% at 50% -20%, rgba(245, 197, 24, 0.12) 0%, rgba(229, 9, 20, 0.05) 40%, transparent 80%);
+}
+
+.projector-beam-matrix {
+  background: radial-gradient(ellipse 60% 50% at 50% -20%, rgba(0, 255, 65, 0.18) 0%, rgba(3, 160, 98, 0.08) 45%, transparent 80%);
+}
+
+/* Marquee Bulb Glow Animation */
+@keyframes bulbPulse {
+  0%, 100% {
+    opacity: 0.9;
+    filter: drop-shadow(0 0 6px #f5c518);
+  }
+  50% {
+    opacity: 0.4;
+    filter: drop-shadow(0 0 1px #f5c518);
+  }
+}
+
+.animate-bulb-odd {
+  animation: bulbPulse 2s ease-in-out infinite;
+}
+
+.animate-bulb-even {
+  animation: bulbPulse 2s ease-in-out infinite 1s;
+}
+
+/* Smooth Film Reel Spin */
+@keyframes reelSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-reel {
+  animation: reelSpin 12s linear infinite;
+}
+
+.spin-reel:hover {
+  animation-duration: 3s;
+}
+
+/* Matrix Phosphor Terminal Glow */
+.matrix-text-glow {
+  text-shadow: 0 0 8px rgba(0, 255, 65, 0.7), 0 0 16px rgba(0, 255, 65, 0.4);
+}
+
+.matrix-box-glow {
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.25), inset 0 0 15px rgba(0, 255, 65, 0.1);
 }
